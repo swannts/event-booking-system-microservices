@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "../../../generated/prisma";
 import type { MessageEnvelope, Topic } from "@event-booking/contracts";
 import type { BookingStatus } from "@event-booking/contracts";
 

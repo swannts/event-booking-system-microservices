@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../../generated/prisma";
 import type { BookingTransactionalClient } from "../modules/bookings/booking.repository";
 
 export type BookingDatabase = PrismaClient & BookingTransactionalClient;

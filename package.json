@@ -6,6 +6,7 @@
   "scripts": {
     "build": "corepack pnpm -r --sort run build",
     "test": "corepack pnpm -r --sort run build && corepack pnpm -r --sort run test",
+    "test:e2e": "corepack pnpm --dir services/event-service exec vitest --config ../../vitest.e2e.config.ts run",
     "typecheck": "corepack pnpm -r --sort run typecheck",
     "dev": "corepack pnpm --filter @event-booking/user-service dev"
   },

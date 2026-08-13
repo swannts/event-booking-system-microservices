@@ -4,7 +4,7 @@
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate && tsc -p tsconfig.json && rm -rf dist/generated && cp -R generated dist/generated",
     "dev": "tsx watch src/server.ts",
     "postinstall": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate",
     "prisma:generate": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate",
