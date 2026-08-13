@@ -1,0 +1,15 @@
+{
+  "name": "event-booking-system",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "build": "corepack pnpm -r --sort run build",
+    "test": "corepack pnpm -r --sort run build && corepack pnpm -r --sort run test",
+    "typecheck": "corepack pnpm -r --sort run typecheck",
+    "dev": "corepack pnpm --filter @event-booking/user-service dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
