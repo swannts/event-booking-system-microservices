@@ -1,11 +1,11 @@
 import { randomUUID } from "crypto";
 import { EventErrors, AppError } from "./event-errors";
 import type { EventCache } from "../../infrastructure/cache/event-cache";
-import type { EventDto, PostgresEventRepository } from "../../infrastructure/database/event-repository";
+import type { EventDto, EventRepository } from "../../infrastructure/database/event-repository";
 
 export class EventsService {
   constructor(
-    private readonly repository: PostgresEventRepository,
+    private readonly repository: EventRepository,
     private readonly cache: EventCache,
     private readonly cacheTtlSeconds: number
   ) {}

@@ -8,7 +8,7 @@ import {
 import { BookingReservationConsumer } from "../src/modules/events/booking-reservation.consumer";
 import type { EventCache } from "../src/infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../src/infrastructure/messaging/message-publisher";
-import type { PostgresEventRepository } from "../src/infrastructure/database/event-repository";
+import type { EventRepository } from "../src/infrastructure/database/event-repository";
 
 class FakeRepo {
   public processed = new Set<string>();
@@ -75,7 +75,7 @@ function createMessage(eventId = "event-1"): MessageEnvelope<ReserveSeatsPayload
 
 describe("BookingReservationConsumer", () => {
   it("publishes seats reserved on success", async () => {
-    const repo = new FakeRepo(true) as unknown as PostgresEventRepository;
+    const repo = new FakeRepo(true) as unknown as EventRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
     const consumer = new BookingReservationConsumer(repo, cache, publisher);
@@ -88,7 +88,7 @@ describe("BookingReservationConsumer", () => {
   });
 
   it("publishes reservation failed on shortage", async () => {
-    const repo = new FakeRepo(false) as unknown as PostgresEventRepository;
+    const repo = new FakeRepo(false) as unknown as EventRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
     const consumer = new BookingReservationConsumer(repo, cache, publisher);
@@ -99,7 +99,7 @@ describe("BookingReservationConsumer", () => {
   });
 
   it("skips duplicate messages", async () => {
-    const repo = new FakeRepo(true) as unknown as PostgresEventRepository;
+    const repo = new FakeRepo(true) as unknown as EventRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
     const consumer = new BookingReservationConsumer(repo, cache, publisher);

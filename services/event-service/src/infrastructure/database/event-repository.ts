@@ -1,25 +1,6 @@
-import type { QueryResultRow } from "pg";
+import type { Event as EventModel } from "../../../generated/prisma";
 
-export type EventRecord = {
-  id: string;
-  title: string;
-  date: Date;
-  total_seats: number;
-  available_seats: number;
-  created_at: Date;
-  updated_at: Date;
-};
-
-export type DatabaseClient = {
-  query<T extends QueryResultRow = QueryResultRow>(
-    text: string,
-    params?: readonly unknown[]
-  ): Promise<{
-    rows: T[];
-    rowCount: number;
-  }>;
-  end(): Promise<void>;
-};
+export type EventRecord = EventModel;
 
 export type EventDto = {
   id: string;
@@ -31,41 +12,76 @@ export type EventDto = {
   updatedAt: string;
 };
 
+export type EventDatabaseClient = {
+  event: {
+    create(input: { data: { id: string; title: string; date: Date; totalSeats: number; availableSeats: number } }): Promise<EventRecord>;
+    findUnique(input: { where: { id: string } }): Promise<EventRecord | null>;
+    findMany(input?: { orderBy?: { createdAt?: "asc" | "desc" } }): Promise<EventRecord[]>;
+    update(input: {
+      where: { id: string };
+      data: {
+        title?: string;
+        date?: Date;
+        totalSeats?: number;
+        availableSeats?: number;
+      };
+    }): Promise<EventRecord>;
+    deleteMany(input: { where: { id: string } }): Promise<{ count: number }>;
+    updateMany(input: {
+      where: { id: string; availableSeats?: { gte: number } };
+      data: {
+        availableSeats?: { decrement?: number; increment?: number };
+        updatedAt?: Date;
+      };
+    }): Promise<{ count: number }>;
+  };
+  processedEventMessage: {
+    findUnique(input: { where: { messageId: string } }): Promise<{ messageId: string; processedAt: Date } | null>;
+    upsert(input: {
+      where: { messageId: string };
+      update: Record<string, never>;
+      create: { messageId: string };
+    }): Promise<{ messageId: string; processedAt: Date }>;
+  };
+  $connect(): Promise<void>;
+  $disconnect(): Promise<void>;
+};
+
+export interface EventRepository {
+  create(input: {
+    id: string;
+    title: string;
+    date: string;
+    totalSeats: number;
+    availableSeats?: number;
+  }): Promise<EventDto>;
+  findById(id: string): Promise<EventDto | null>;
+  list(): Promise<EventDto[]>;
+  update(
+    id: string,
+    input: { title: string; date: string; totalSeats: number }
+  ): Promise<EventDto | null>;
+  delete(id: string): Promise<boolean>;
+  reserveSeats(id: string, quantity: number): Promise<EventDto | null>;
+  releaseSeats(id: string, quantity: number): Promise<EventDto | null>;
+  hasProcessedMessage(messageId: string): Promise<boolean>;
+  markMessageProcessed(messageId: string): Promise<void>;
+}
+
 function mapRow(row: EventRecord): EventDto {
   return {
     id: row.id,
     title: row.title,
     date: row.date.toISOString(),
-    totalSeats: row.total_seats,
-    availableSeats: row.available_seats,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString()
+    totalSeats: row.totalSeats,
+    availableSeats: row.availableSeats,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
   };
 }
 
-export async function ensureEventsTable(db: DatabaseClient) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS events (
-      id UUID PRIMARY KEY,
-      title VARCHAR(255) NOT NULL,
-      date TIMESTAMPTZ NOT NULL,
-      total_seats INTEGER NOT NULL CHECK (total_seats > 0),
-      available_seats INTEGER NOT NULL CHECK (available_seats >= 0),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS processed_event_messages (
-      message_id UUID PRIMARY KEY,
-      processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-}
-
-export class PostgresEventRepository {
-  constructor(private readonly db: DatabaseClient) {}
+export class PrismaEventRepository implements EventRepository {
+  constructor(private readonly db: EventDatabaseClient) {}
 
   async create(input: {
     id: string;
@@ -74,125 +90,112 @@ export class PostgresEventRepository {
     totalSeats: number;
     availableSeats?: number;
   }): Promise<EventDto> {
-    const availableSeats = input.availableSeats ?? input.totalSeats;
-    const result = await this.db.query<EventRecord>(
-      `
-      INSERT INTO events (id, title, date, total_seats, available_seats)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, title, date, total_seats, available_seats, created_at, updated_at
-    `,
-      [input.id, input.title, input.date, input.totalSeats, availableSeats]
-    );
+    const event = await this.db.event.create({
+      data: {
+        id: input.id,
+        title: input.title,
+        date: new Date(input.date),
+        totalSeats: input.totalSeats,
+        availableSeats: input.availableSeats ?? input.totalSeats
+      }
+    });
 
-    return mapRow(result.rows[0]);
+    return mapRow(event);
   }
 
   async findById(id: string): Promise<EventDto | null> {
-    const result = await this.db.query<EventRecord>(
-      `SELECT id, title, date, total_seats, available_seats, created_at, updated_at FROM events WHERE id = $1`,
-      [id]
-    );
-
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+    const event = await this.db.event.findUnique({ where: { id } });
+    return event ? mapRow(event) : null;
   }
 
   async list(): Promise<EventDto[]> {
-    const result = await this.db.query<EventRecord>(
-      `SELECT id, title, date, total_seats, available_seats, created_at, updated_at FROM events ORDER BY created_at ASC`
-    );
-
-    return result.rows.map(mapRow);
+    const events = await this.db.event.findMany({ orderBy: { createdAt: "asc" } });
+    return events.map(mapRow);
   }
 
   async update(
     id: string,
     input: { title: string; date: string; totalSeats: number }
   ): Promise<EventDto | null> {
-    const current = await this.db.query<EventRecord>(
-      `SELECT id, title, date, total_seats, available_seats, created_at, updated_at FROM events WHERE id = $1`,
-      [id]
-    );
-
-    if (!current.rows[0]) {
+    const current = await this.db.event.findUnique({ where: { id } });
+    if (!current) {
       return null;
     }
 
-    const reservedSeats = current.rows[0].total_seats - current.rows[0].available_seats;
+    const reservedSeats = current.totalSeats - current.availableSeats;
     if (input.totalSeats < reservedSeats) {
       throw new Error("AVAILABLE_SEATS_CANNOT_EXCEED_TOTAL_SEATS");
     }
 
-    const availableSeats = input.totalSeats - reservedSeats;
-    const result = await this.db.query<EventRecord>(
-      `
-      UPDATE events
-      SET title = $2,
-          date = $3,
-          total_seats = $4,
-          available_seats = $5,
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING id, title, date, total_seats, available_seats, created_at, updated_at
-    `,
-      [id, input.title, input.date, input.totalSeats, availableSeats]
-    );
+    const event = await this.db.event.update({
+      where: { id },
+      data: {
+        title: input.title,
+        date: new Date(input.date),
+        totalSeats: input.totalSeats,
+        availableSeats: input.totalSeats - reservedSeats
+      }
+    });
 
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+    return mapRow(event);
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await this.db.query(`DELETE FROM events WHERE id = $1`, [id]);
-    return result.rowCount > 0;
+    const result = await this.db.event.deleteMany({ where: { id } });
+    return result.count > 0;
   }
 
   async reserveSeats(id: string, quantity: number): Promise<EventDto | null> {
-    const result = await this.db.query<EventRecord>(
-      `
-      UPDATE events
-      SET available_seats = available_seats - $1,
-          updated_at = NOW()
-      WHERE id = $2
-        AND available_seats >= $1
-      RETURNING id, title, date, total_seats, available_seats, created_at, updated_at
-    `,
-      [quantity, id]
-    );
+    const result = await this.db.event.updateMany({
+      where: {
+        id,
+        availableSeats: { gte: quantity }
+      },
+      data: {
+        availableSeats: {
+          decrement: quantity
+        },
+        updatedAt: new Date()
+      }
+    });
 
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+    if (result.count === 0) {
+      return null;
+    }
+
+    const event = await this.db.event.findUnique({ where: { id } });
+    return event ? mapRow(event) : null;
   }
 
   async releaseSeats(id: string, quantity: number): Promise<EventDto | null> {
-    const result = await this.db.query<EventRecord>(
-      `
-      UPDATE events
-      SET available_seats = available_seats + $1,
-          updated_at = NOW()
-      WHERE id = $2
-      RETURNING id, title, date, total_seats, available_seats, created_at, updated_at
-    `,
-      [quantity, id]
-    );
+    const result = await this.db.event.updateMany({
+      where: { id },
+      data: {
+        availableSeats: {
+          increment: quantity
+        },
+        updatedAt: new Date()
+      }
+    });
 
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+    if (result.count === 0) {
+      return null;
+    }
+
+    const event = await this.db.event.findUnique({ where: { id } });
+    return event ? mapRow(event) : null;
   }
 
   async hasProcessedMessage(messageId: string): Promise<boolean> {
-    const result = await this.db.query<{ message_id: string }>(
-      `SELECT message_id FROM processed_event_messages WHERE message_id = $1`,
-      [messageId]
-    );
-
-    return result.rowCount > 0;
+    const record = await this.db.processedEventMessage.findUnique({ where: { messageId } });
+    return record !== null;
   }
 
   async markMessageProcessed(messageId: string): Promise<void> {
-    await this.db.query(
-      `
-      INSERT INTO processed_event_messages (message_id)
-      VALUES ($1)
-      ON CONFLICT (message_id) DO NOTHING
-    `,
-      [messageId]
-    );
+    await this.db.processedEventMessage.upsert({
+      where: { messageId },
+      update: {},
+      create: { messageId }
+    });
   }
 }

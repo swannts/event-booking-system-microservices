@@ -3,7 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { createLogger } from "@event-booking/logger";
-import { ensureEventsTable, PostgresEventRepository, type DatabaseClient } from "./infrastructure/database/event-repository";
+import { PrismaEventRepository, type EventDatabaseClient } from "./infrastructure/database/event-repository";
 import type { EventCache } from "./infrastructure/cache/event-cache";
 import { InMemoryEventCache } from "./infrastructure/cache/event-cache";
 import { errorHandler } from "./middleware/error-handler";
@@ -11,10 +11,9 @@ import { createEventRouter } from "./modules/events/event.routes";
 import { EventsService } from "./modules/events/event.service";
 import type { MessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { InMemoryMessagePublisher } from "./infrastructure/messaging/message-publisher";
-import { BookingReservationConsumer } from "./modules/events/booking-reservation.consumer";
 
 export type EventServiceDependencies = {
-  db: DatabaseClient;
+  db: EventDatabaseClient;
   cache?: EventCache;
   cacheTtlSeconds?: number;
   publisher?: MessagePublisher;
@@ -26,11 +25,9 @@ export async function createEventApp({
   cacheTtlSeconds = 120,
   publisher = new InMemoryMessagePublisher()
 }: EventServiceDependencies): Promise<Express> {
-  await ensureEventsTable(db);
-
   const app = express();
   const logger = createLogger("event-service");
-  const repository = new PostgresEventRepository(db);
+  const repository = new PrismaEventRepository(db);
   const service = new EventsService(repository, cache, cacheTtlSeconds);
   void publisher;
 
@@ -42,7 +39,7 @@ export async function createEventApp({
 
   app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
   app.get("/health/ready", async (_req, res) => {
-    await db.query("SELECT 1");
+    await db.$connect();
     res.json({ status: "ok" });
   });
 

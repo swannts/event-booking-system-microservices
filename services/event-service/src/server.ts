@@ -1,7 +1,7 @@
-import { Pool } from "pg";
 import { createClient } from "redis";
 import { loadEventServiceEnv } from "./config/env";
 import { createEventApp } from "./app";
+import { createEventDatabase } from "./config/database";
 import type { EventCache } from "./infrastructure/cache/event-cache";
 
 class RedisEventCache implements EventCache {
@@ -23,7 +23,8 @@ class RedisEventCache implements EventCache {
 
 async function main() {
   const env = loadEventServiceEnv();
-  const db = new Pool({ connectionString: env.DATABASE_URL });
+  const db = createEventDatabase(env.DATABASE_URL);
+  await db.$connect();
   const redis = createClient({ url: env.REDIS_URL });
   redis.on("error", (error) => {
     console.error("redis error", error);
@@ -42,7 +43,7 @@ async function main() {
   const shutdown = async () => {
     server.close(async () => {
       await redis.quit();
-      await db.end();
+      await db.$disconnect();
       process.exit(0);
     });
   };

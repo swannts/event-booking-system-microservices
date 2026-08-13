@@ -8,11 +8,11 @@ import {
 } from "@event-booking/contracts";
 import type { EventCache } from "../../infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
-import type { PostgresEventRepository } from "../../infrastructure/database/event-repository";
+import type { EventRepository } from "../../infrastructure/database/event-repository";
 
 export class BookingReservationConsumer {
   constructor(
-    private readonly repository: PostgresEventRepository,
+    private readonly repository: EventRepository,
     private readonly cache: EventCache,
     private readonly publisher: MessagePublisher
   ) {}

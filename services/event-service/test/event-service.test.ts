@@ -1,8 +1,137 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { newDb } from "pg-mem";
+import { randomUUID } from "crypto";
 import type { EventCache } from "../src/infrastructure/cache/event-cache";
 import { createEventApp } from "../src/app";
+import type { EventDatabaseClient } from "../src/infrastructure/database/event-repository";
+
+type EventRow = {
+  id: string;
+  title: string;
+  date: Date;
+  totalSeats: number;
+  availableSeats: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type ProcessedMessageRow = {
+  messageId: string;
+  processedAt: Date;
+};
+
+class FakeEventDatabase implements EventDatabaseClient {
+  public readonly events = new Map<string, EventRow>();
+  public readonly processedMessages = new Map<string, ProcessedMessageRow>();
+
+  public readonly event = {
+    create: async ({
+      data
+    }: {
+      data: {
+        id: string;
+        title: string;
+        date: Date;
+        totalSeats: number;
+        availableSeats: number;
+      };
+    }) => {
+      const row: EventRow = {
+        id: data.id,
+        title: data.title,
+        date: data.date,
+        totalSeats: data.totalSeats,
+        availableSeats: data.availableSeats,
+        createdAt: new Date("2026-08-13T00:00:00.000Z"),
+        updatedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.events.set(row.id, row);
+      return row;
+    },
+    findUnique: async ({ where }: { where: { id: string } }) => {
+      return this.events.get(where.id) ?? null;
+    },
+    findMany: async (input?: { orderBy?: { createdAt?: "asc" | "desc" } }) => {
+      const rows = [...this.events.values()].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+      return input?.orderBy?.createdAt === "desc" ? rows.reverse() : rows;
+    },
+    update: async ({
+      where,
+      data
+    }: {
+      where: { id: string };
+      data: { title?: string; date?: Date; totalSeats?: number; availableSeats?: number };
+    }) => {
+      const current = this.events.get(where.id);
+      if (!current) {
+        throw new Error("Record not found");
+      }
+
+      const updated: EventRow = {
+        ...current,
+        ...data,
+        updatedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.events.set(where.id, updated);
+      return updated;
+    },
+    deleteMany: async ({ where }: { where: { id: string } }) => {
+      const deleted = this.events.delete(where.id);
+      return { count: deleted ? 1 : 0 };
+    },
+    updateMany: async ({
+      where,
+      data
+    }: {
+      where: { id: string; availableSeats?: { gte: number } };
+      data: { availableSeats?: { decrement?: number; increment?: number }; updatedAt?: Date };
+    }) => {
+      const current = this.events.get(where.id);
+      if (!current) {
+        return { count: 0 };
+      }
+
+      if (where.availableSeats?.gte !== undefined && current.availableSeats < where.availableSeats.gte) {
+        return { count: 0 };
+      }
+
+      const decrement = data.availableSeats?.decrement ?? 0;
+      const increment = data.availableSeats?.increment ?? 0;
+      const updated: EventRow = {
+        ...current,
+        availableSeats: current.availableSeats - decrement + increment,
+        updatedAt: data.updatedAt ?? new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.events.set(where.id, updated);
+      return { count: 1 };
+    }
+  };
+
+  public readonly processedEventMessage = {
+    findUnique: async ({ where }: { where: { messageId: string } }) => {
+      return this.processedMessages.get(where.messageId) ?? null;
+    },
+    upsert: async ({
+      where,
+      create
+    }: {
+      where: { messageId: string };
+      update: Record<string, never>;
+      create: { messageId: string };
+    }) => {
+      const row: ProcessedMessageRow = this.processedMessages.get(where.messageId) ?? {
+        messageId: create.messageId,
+        processedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.processedMessages.set(where.messageId, row);
+      return row;
+    }
+  };
+
+  async $connect() {}
+
+  async $disconnect() {}
+}
 
 class FakeCache implements EventCache {
   public gets = 0;
@@ -27,24 +156,20 @@ class FakeCache implements EventCache {
 }
 
 async function createTestApp() {
-  const db = newDb({ autoCreateForeignKeyIndices: true });
-  const { Pool } = db.adapters.createPg();
-  const pool = new Pool();
+  const db = new FakeEventDatabase();
   const cache = new FakeCache();
-  const app = await createEventApp({ db: pool, cache, cacheTtlSeconds: 120 });
-  return { app, cache, db: pool };
+  const app = await createEventApp({ db, cache, cacheTtlSeconds: 120 });
+  return { app, cache, db };
 }
 
 describe("Event Service", () => {
   let app: Awaited<ReturnType<typeof createEventApp>>;
   let cache: FakeCache;
-  let db: { query: (sql: string, params?: readonly unknown[]) => Promise<unknown>; end: () => Promise<void> };
 
   beforeEach(async () => {
     const created = await createTestApp();
     app = created.app;
     cache = created.cache;
-    db = created.db;
   });
 
   it("creates an event", async () => {
