@@ -1,1 +1,0 @@
-export { loadUserServiceEnv } from "./env";

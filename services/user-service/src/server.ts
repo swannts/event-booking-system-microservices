@@ -1,10 +1,11 @@
-import { Pool } from "pg";
-import { loadUserServiceEnv } from "./config";
+import { loadUserServiceEnv } from "./config/env";
 import { createUserApp } from "./app";
+import { createUserDatabase } from "./config/database";
 
 async function main() {
   const env = loadUserServiceEnv();
-  const db = new Pool({ connectionString: env.DATABASE_URL });
+  const db = createUserDatabase(env.DATABASE_URL);
+  await db.$connect();
   const app = await createUserApp({ db });
 
   const server = app.listen(env.PORT, () => {
@@ -13,7 +14,7 @@ async function main() {
 
   const shutdown = async () => {
     server.close(async () => {
-      await db.end();
+      await db.$disconnect();
       process.exit(0);
     });
   };

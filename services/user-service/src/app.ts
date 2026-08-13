@@ -2,24 +2,27 @@ import express, { type Express, type RequestHandler } from "express";
 import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import type { Pool } from "pg";
 import { createHttpLogger } from "@event-booking/logger";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { errorHandler } from "./middleware/error-handler";
 import { createUserRouter } from "./modules/users/user.routes";
 import { UsersService } from "./modules/users/user.service";
-import { PostgresUserRepository, ensureUsersTable } from "./infrastructure/database/user-repository";
+import { PrismaUserRepository } from "./modules/users/user.repository";
+import { UserController } from "./modules/users/user.controller";
+import { ensureUsersTable, type UserDatabase } from "./config/database";
+import { notFoundHandler } from "./middleware/not-found";
 
 export type UserServiceDependencies = {
-  db: Pool;
+  db: UserDatabase;
 };
 
 export async function createUserApp({ db }: UserServiceDependencies): Promise<Express> {
   await ensureUsersTable(db);
 
   const app = express();
-  const repository = new PostgresUserRepository(db);
+  const repository = new PrismaUserRepository(db);
   const service = new UsersService(repository);
+  const controller = new UserController(service);
   const httpLogger = createHttpLogger("user-service");
 
   app.disable("x-powered-by");
@@ -39,11 +42,12 @@ export async function createUserApp({ db }: UserServiceDependencies): Promise<Ex
   });
 
   app.get("/health/ready", async (_req, res) => {
-    await db.query("SELECT 1");
+    await db.$connect();
     res.json({ status: "ok" });
   });
 
-  app.use("/users", createUserRouter(service));
+  app.use("/users", createUserRouter(controller));
+  app.use(notFoundHandler);
   app.use(errorHandler);
 
   return app;
