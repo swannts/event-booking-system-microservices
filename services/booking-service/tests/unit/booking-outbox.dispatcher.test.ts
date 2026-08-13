@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "crypto";
 import { Topics, type MessageEnvelope, type ReserveSeatsPayload } from "@event-booking/contracts";
-import { BookingOutboxDispatcher } from "../src/modules/bookings/booking-outbox.dispatcher";
-import type { BookingOutboxRecord, BookingRepository } from "../src/infrastructure/database/booking-repository";
-import type { MessagePublisher } from "../src/infrastructure/messaging/message-publisher";
+import { BookingOutboxDispatcher } from "../../src/modules/bookings/booking-outbox.dispatcher";
+import type { BookingOutboxRecord, BookingRepository } from "../../src/modules/bookings/booking.repository";
+import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
 
 function createEnvelope(): MessageEnvelope<ReserveSeatsPayload> {
   return {

@@ -1,8 +1,17 @@
-import type { Prisma, Booking as BookingModel, PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { MessageEnvelope, Topic } from "@event-booking/contracts";
 import type { BookingStatus } from "@event-booking/contracts";
 
-export type BookingRecord = BookingModel;
+export type BookingRecord = {
+  id: string;
+  userId: string;
+  eventId: string;
+  quantity: number;
+  status: BookingStatus;
+  idempotencyKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 export type BookingDto = {
   id: string;

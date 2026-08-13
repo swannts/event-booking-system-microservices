@@ -1,6 +1,6 @@
 import type { MessageEnvelope, Topic } from "@event-booking/contracts";
 import { createLogger, type AppLogger } from "@event-booking/logger";
-import type { BookingOutboxRecord, BookingRepository } from "../../infrastructure/database/booking-repository";
+import type { BookingOutboxRecord, BookingRepository } from "./booking.repository";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
 
 function toEnvelope<TPayload>(record: BookingOutboxRecord): MessageEnvelope<TPayload> {

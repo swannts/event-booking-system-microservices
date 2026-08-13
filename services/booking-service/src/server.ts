@@ -2,10 +2,12 @@ import { Topics } from "@event-booking/contracts";
 import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messaging";
 import { createLogger } from "@event-booking/logger";
 import { createBookingApp } from "./app";
-import { createBookingDatabase, createBookingKafkaConfig, loadBookingServiceEnv } from "./config";
-import { PrismaBookingRepository } from "./infrastructure/database/booking-repository";
+import { createBookingDatabase } from "./config/database";
+import { createBookingKafkaConfig } from "./config/kafka";
+import { loadBookingServiceEnv } from "./config/env";
+import { PrismaBookingRepository } from "./modules/bookings/booking.repository";
 import { BookingOutboxDispatcher } from "./modules/bookings/booking-outbox.dispatcher";
-import { BookingEventsConsumer } from "./modules/bookings/booking-events.consumer";
+import { BookingEventsConsumer } from "./infrastructure/messaging/consumers/seats-reserved.consumer";
 import { BookingController } from "./modules/bookings/booking.controller";
 import { BookingsService } from "./modules/bookings/booking.service";
 

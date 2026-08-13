@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
-import { AppError } from "../modules/bookings/booking-errors";
+import { AppError } from "../modules/bookings/booking.errors";
 
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   const requestId = (req.header("x-request-id") as string | undefined) ?? undefined;

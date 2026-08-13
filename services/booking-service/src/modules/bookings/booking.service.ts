@@ -6,8 +6,8 @@ import {
   type ReserveSeatsPayload
 } from "@event-booking/contracts";
 import { createLogger, type AppLogger } from "@event-booking/logger";
-import type { BookingDto, BookingRepository } from "../../infrastructure/database/booking-repository";
-import { BookingErrors } from "./booking-errors";
+import type { BookingDto, BookingRepository } from "./booking.repository";
+import { BookingErrors } from "./booking.errors";
 import type { BookingOutboxDispatcher } from "./booking-outbox.dispatcher";
 
 export class BookingsService {

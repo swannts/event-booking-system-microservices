@@ -6,9 +6,9 @@ import {
   type SeatReservationFailedPayload,
   type SeatsReservedPayload
 } from "@event-booking/contracts";
-import { BookingEventsConsumer } from "../src/modules/bookings/booking-events.consumer";
-import type { MessagePublisher } from "../src/infrastructure/messaging/message-publisher";
-import type { BookingRepository } from "../src/infrastructure/database/booking-repository";
+import { BookingEventsConsumer } from "../../src/infrastructure/messaging/consumers/seats-reserved.consumer";
+import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
+import type { BookingRepository } from "../../src/modules/bookings/booking.repository";
 
 type BookingState = {
   id: string;

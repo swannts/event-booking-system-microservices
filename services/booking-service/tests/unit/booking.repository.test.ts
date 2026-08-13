@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "crypto";
 import { Topics, type BookingStatus, type MessageEnvelope, type ReserveSeatsPayload } from "@event-booking/contracts";
-import { PrismaBookingRepository, type BookingDatabaseClient } from "../src/infrastructure/database/booking-repository";
+import { PrismaBookingRepository, type BookingDatabaseClient } from "../../src/modules/bookings/booking.repository";
 
 type BookingRow = {
   id: string;

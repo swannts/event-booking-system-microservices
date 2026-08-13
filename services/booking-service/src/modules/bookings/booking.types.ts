@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import type { BookingDto } from "../../infrastructure/database/booking-repository";
+import type { BookingDto } from "./booking.repository";
 
 export type CreateBookingInput = {
   userId: string;

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NextFunction, Request, Response } from "express";
-import { BookingController } from "../src/modules/bookings/booking.controller";
-import type { BookingsService } from "../src/modules/bookings/booking.service";
+import { BookingController } from "../../src/modules/bookings/booking.controller";
+import type { BookingsService } from "../../src/modules/bookings/booking.service";
 
 function createResponseMock() {
   const res = {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { createBookingApp } from "../src/app";
-import type { BookingDatabaseClient } from "../src/infrastructure/database/booking-repository";
-import type { MessagePublisher } from "../src/infrastructure/messaging/message-publisher";
+import { createBookingApp } from "../../src/app";
+import type { BookingDatabaseClient } from "../../src/modules/bookings/booking.repository";
+import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
 import type { BookingStatus } from "@event-booking/contracts";
 
 type BookingRow = {

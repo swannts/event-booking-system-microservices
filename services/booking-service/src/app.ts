@@ -7,9 +7,10 @@ import {
   PrismaBookingRepository,
   type BookingDatabaseClient,
   type BookingRepository
-} from "./infrastructure/database/booking-repository";
+} from "./modules/bookings/booking.repository";
 import { InMemoryMessagePublisher, type MessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { errorHandler } from "./middleware/error-handler";
+import { notFoundHandler } from "./middleware/not-found";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { BookingController } from "./modules/bookings/booking.controller";
 import { BookingOutboxDispatcher } from "./modules/bookings/booking-outbox.dispatcher";
@@ -59,6 +60,7 @@ export async function createBookingApp({
   });
 
   app.use("/bookings", createBookingRouter(bookingController));
+  app.use(notFoundHandler);
   app.use(errorHandler);
 
   return app;

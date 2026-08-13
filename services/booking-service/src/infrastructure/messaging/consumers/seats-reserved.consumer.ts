@@ -8,8 +8,8 @@ import {
   type SeatsReservedPayload
 } from "@event-booking/contracts";
 import { createLogger, type AppLogger } from "@event-booking/logger";
-import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
-import type { BookingRepository } from "../../infrastructure/database/booking-repository";
+import type { MessagePublisher } from "../message-publisher";
+import type { BookingRepository } from "../../../modules/bookings/booking.repository";
 
 export class BookingEventsConsumer {
   constructor(
