@@ -1,5 +1,6 @@
 import { Topics } from "@event-booking/contracts";
 import { KafkaConsumerRunner } from "@event-booking/messaging";
+import { createLogger } from "@event-booking/logger";
 import { loadNotificationServiceEnv } from "./config/env";
 import { createNotificationKafkaConfig } from "./config/kafka";
 import { createNotificationApp } from "./app";
@@ -8,6 +9,7 @@ import { InMemoryNotificationStore } from "./infrastructure/notifications/notifi
 
 async function main() {
   const env = loadNotificationServiceEnv();
+  const logger = createLogger("notification-service");
   const kafkaConfig = createNotificationKafkaConfig(env);
   const sink = new InMemoryNotificationStore();
   const consumer = createNotificationConsumer(sink);
@@ -26,12 +28,14 @@ async function main() {
   await consumerRunner.start();
   const app = await createNotificationApp({ sink });
   const server = app.listen(env.PORT, () => {
-    console.log(`notification-service listening on ${env.PORT}`);
+    logger.info({ port: env.PORT }, "Notification service listening");
   });
 
   const shutdown = () =>
     server.close(async () => {
+      logger.info("Notification service shutting down");
       await consumerRunner.stop();
+      logger.info("Notification service stopped");
       process.exit(0);
     });
   process.on("SIGINT", shutdown);

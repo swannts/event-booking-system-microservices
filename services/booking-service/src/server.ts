@@ -1,5 +1,6 @@
 import { Topics } from "@event-booking/contracts";
 import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messaging";
+import { createLogger } from "@event-booking/logger";
 import { createBookingApp } from "./app";
 import { createBookingDatabase, createBookingKafkaConfig, loadBookingServiceEnv } from "./config";
 import { PrismaBookingRepository } from "./infrastructure/database/booking-repository";
@@ -10,6 +11,7 @@ import { BookingsService } from "./modules/bookings/booking.service";
 
 async function main() {
   const env = loadBookingServiceEnv();
+  const logger = createLogger("booking-service");
   const db = createBookingDatabase(env.DATABASE_URL);
   await db.$connect();
   const kafkaConfig = createBookingKafkaConfig(env);
@@ -44,15 +46,17 @@ async function main() {
     controller
   });
   const server = app.listen(env.PORT, () => {
-    console.log(`booking-service listening on ${env.PORT}`);
+    logger.info({ port: env.PORT }, "Booking service listening");
   });
 
   const shutdown = () =>
     server.close(async () => {
+      logger.info("Booking service shutting down");
       outboxDispatcher.stop();
       await consumerRunner.stop();
       await publisher.disconnect();
       await db.$disconnect();
+      logger.info("Booking service stopped");
       process.exit(0);
     });
   process.on("SIGINT", shutdown);

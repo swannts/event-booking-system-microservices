@@ -1,9 +1,9 @@
-import express, { type Express } from "express";
+import express, { type Express, type RequestHandler } from "express";
 import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import type { Pool } from "pg";
-import { createLogger } from "@event-booking/logger";
+import { createHttpLogger } from "@event-booking/logger";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { errorHandler } from "./middleware/error-handler";
 import { createUserRouter } from "./modules/users/user.routes";
@@ -18,16 +18,21 @@ export async function createUserApp({ db }: UserServiceDependencies): Promise<Ex
   await ensureUsersTable(db);
 
   const app = express();
-  const logger = createLogger("user-service");
   const repository = new PostgresUserRepository(db);
   const service = new UsersService(repository);
+  const httpLogger = createHttpLogger("user-service");
 
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(cors());
   app.use(express.json({ limit: "1mb" }));
   app.use(requestIdMiddleware);
-  app.use(pinoHttp({ logger }));
+  const httpMiddleware = pinoHttp({
+    logger: httpLogger.logger,
+    genReqId: httpLogger.genReqId,
+    customProps: httpLogger.customProps
+  });
+  app.use(httpMiddleware as unknown as RequestHandler);
 
   app.get("/health/live", (_req, res) => {
     res.json({ status: "ok" });

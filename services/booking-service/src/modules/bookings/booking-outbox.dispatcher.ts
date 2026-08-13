@@ -1,4 +1,5 @@
 import type { MessageEnvelope, Topic } from "@event-booking/contracts";
+import { createLogger, type AppLogger } from "@event-booking/logger";
 import type { BookingOutboxRecord, BookingRepository } from "../../infrastructure/database/booking-repository";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
 
@@ -12,7 +13,8 @@ export class BookingOutboxDispatcher {
 
   constructor(
     private readonly repository: BookingRepository,
-    private readonly publisher: MessagePublisher
+    private readonly publisher: MessagePublisher,
+    private readonly logger: AppLogger = createLogger("booking-service")
   ) {}
 
   start(intervalMs = 5000): void {
@@ -56,12 +58,29 @@ export class BookingOutboxDispatcher {
     try {
       await this.publisher.publish(record.topic as Topic, toEnvelope(record));
       await this.repository.markOutboxPublished(record.id);
+      this.logger.info(
+        {
+          outboxId: record.id,
+          topic: record.topic,
+          messageId: record.messageId,
+          attempts: record.attempts
+        },
+        "Outbox event published"
+      );
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Outbox publish failed";
+      this.logger.error(
+        {
+          outboxId: record.id,
+          topic: record.topic,
+          messageId: record.messageId,
+          attempts: record.attempts,
+          error: message
+        },
+        "Outbox publish failed"
+      );
       try {
-        await this.repository.recordOutboxFailure(
-          record.id,
-          error instanceof Error ? error.message : "Outbox publish failed"
-        );
+        await this.repository.recordOutboxFailure(record.id, message);
       } catch {
         // Keep the row available for the next retry even if bookkeeping fails.
       }

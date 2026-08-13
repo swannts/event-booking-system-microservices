@@ -1,6 +1,7 @@
 import { createClient } from "redis";
 import { Topics } from "@event-booking/contracts";
 import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messaging";
+import { createLogger } from "@event-booking/logger";
 import { loadEventServiceEnv } from "./config/env";
 import { createEventApp } from "./app";
 import { createEventDatabase } from "./config/database";
@@ -29,12 +30,13 @@ class RedisEventCache implements EventCache {
 
 async function main() {
   const env = loadEventServiceEnv();
+  const logger = createLogger("event-service");
   const db = createEventDatabase(env.DATABASE_URL);
   await db.$connect();
   const kafkaConfig = createEventKafkaConfig(env);
   const redis = createClient({ url: env.REDIS_URL });
   redis.on("error", (error) => {
-    console.error("redis error", error);
+    logger.error({ error }, "Redis client error");
   });
   await redis.connect();
   const publisher = new KafkaMessagePublisher(kafkaConfig);
@@ -61,15 +63,17 @@ async function main() {
     service
   });
   const server = app.listen(env.PORT, () => {
-    console.log(`event-service listening on ${env.PORT}`);
+    logger.info({ port: env.PORT }, "Event service listening");
   });
 
   const shutdown = async () => {
     server.close(async () => {
+      logger.info("Event service shutting down");
       await consumerRunner.stop();
       await publisher.disconnect();
       await redis.quit();
       await db.$disconnect();
+      logger.info("Event service stopped");
       process.exit(0);
     });
   };

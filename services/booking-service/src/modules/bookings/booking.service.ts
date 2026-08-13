@@ -5,6 +5,7 @@ import {
   type MessageEnvelope,
   type ReserveSeatsPayload
 } from "@event-booking/contracts";
+import { createLogger, type AppLogger } from "@event-booking/logger";
 import type { BookingDto, BookingRepository } from "../../infrastructure/database/booking-repository";
 import { BookingErrors } from "./booking-errors";
 import type { BookingOutboxDispatcher } from "./booking-outbox.dispatcher";
@@ -12,7 +13,8 @@ import type { BookingOutboxDispatcher } from "./booking-outbox.dispatcher";
 export class BookingsService {
   constructor(
     private readonly repository: BookingRepository,
-    private readonly outboxDispatcher: BookingOutboxDispatcher
+    private readonly outboxDispatcher: BookingOutboxDispatcher,
+    private readonly logger: AppLogger = createLogger("booking-service")
   ) {}
 
   async createBooking(input: {
@@ -24,6 +26,14 @@ export class BookingsService {
     if (input.idempotencyKey) {
       const existing = await this.repository.findIdempotencyResponse(input.idempotencyKey);
       if (existing) {
+        this.logger.info(
+          {
+            bookingId: (existing as BookingDto).id,
+            eventId: (existing as BookingDto).eventId,
+            idempotencyKey: input.idempotencyKey
+          },
+          "Booking request replayed via idempotency key"
+        );
         return existing as BookingDto;
       }
     }
@@ -57,6 +67,16 @@ export class BookingsService {
       }
     );
 
+    this.logger.info(
+      {
+        bookingId: booking.id,
+        eventId: booking.eventId,
+        userId: booking.userId,
+        quantity: booking.quantity,
+        idempotencyKey: input.idempotencyKey ?? undefined
+      },
+      "Booking created and outbox event queued"
+    );
     await this.outboxDispatcher.dispatchPending();
     return booking;
   }
@@ -76,6 +96,13 @@ export class BookingsService {
   async cancelBooking(id: string): Promise<BookingDto> {
     const booking = await this.getBookingById(id);
     if (booking.status !== "CONFIRMED") {
+      this.logger.warn(
+        {
+          bookingId: booking.id,
+          status: booking.status
+        },
+        "Rejected booking cancellation for non-confirmed booking"
+      );
       throw BookingErrors.invalidStatus();
     }
 
@@ -101,6 +128,14 @@ export class BookingsService {
     if (!cancelled) {
       throw BookingErrors.notFound();
     }
+    this.logger.info(
+      {
+        bookingId: cancelled.id,
+        eventId: cancelled.eventId,
+        quantity: cancelled.quantity
+      },
+      "Booking cancelled and cancellation outbox event queued"
+    );
     await this.outboxDispatcher.dispatchPending();
     return cancelled;
   }
@@ -110,6 +145,7 @@ export class BookingsService {
     if (!booking) {
       throw BookingErrors.notFound();
     }
+    this.logger.info({ bookingId: booking.id, eventId: booking.eventId }, "Booking confirmed");
     return booking;
   }
 
@@ -118,6 +154,7 @@ export class BookingsService {
     if (!booking) {
       throw BookingErrors.notFound();
     }
+    this.logger.warn({ bookingId: booking.id, eventId: booking.eventId }, "Booking failed");
     return booking;
   }
 }

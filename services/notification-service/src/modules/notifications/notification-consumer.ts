@@ -5,10 +5,14 @@ import {
   type MessageEnvelope,
   Topics
 } from "@event-booking/contracts";
+import { createLogger, type AppLogger } from "@event-booking/logger";
 import type { NotificationSink, NotificationRecord } from "../../infrastructure/notifications/notification-sink";
 
 class NotificationConsumer {
-  constructor(private readonly sink: NotificationSink) {}
+  constructor(
+    private readonly sink: NotificationSink,
+    private readonly logger: AppLogger = createLogger("notification-service")
+  ) {}
 
   list(): NotificationRecord[] {
     return this.sink.list();
@@ -16,6 +20,14 @@ class NotificationConsumer {
 
   async handleBookingConfirmed(message: MessageEnvelope<BookingConfirmedPayload>): Promise<void> {
     if (await this.sink.hasProcessedMessage(message.messageId)) {
+      this.logger.info(
+        {
+          messageId: message.messageId,
+          bookingId: message.payload.bookingId,
+          eventId: message.payload.eventId
+        },
+        "Skipping duplicate booking confirmed message"
+      );
       return;
     }
 
@@ -32,10 +44,26 @@ class NotificationConsumer {
     });
 
     await this.sink.markProcessed(message.messageId);
+    this.logger.info(
+      {
+        messageId: message.messageId,
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId
+      },
+      "Stored booking confirmed notification"
+    );
   }
 
   async handleBookingFailed(message: MessageEnvelope<BookingFailedPayload>): Promise<void> {
     if (await this.sink.hasProcessedMessage(message.messageId)) {
+      this.logger.info(
+        {
+          messageId: message.messageId,
+          bookingId: message.payload.bookingId,
+          eventId: message.payload.eventId
+        },
+        "Skipping duplicate booking failed message"
+      );
       return;
     }
 
@@ -53,10 +81,27 @@ class NotificationConsumer {
     });
 
     await this.sink.markProcessed(message.messageId);
+    this.logger.warn(
+      {
+        messageId: message.messageId,
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        reason: message.payload.reason
+      },
+      "Stored booking failed notification"
+    );
   }
 
   async handleBookingCancelled(message: MessageEnvelope<BookingCancelledPayload>): Promise<void> {
     if (await this.sink.hasProcessedMessage(message.messageId)) {
+      this.logger.info(
+        {
+          messageId: message.messageId,
+          bookingId: message.payload.bookingId,
+          eventId: message.payload.eventId
+        },
+        "Skipping duplicate booking cancelled message"
+      );
       return;
     }
 
@@ -73,6 +118,14 @@ class NotificationConsumer {
     });
 
     await this.sink.markProcessed(message.messageId);
+    this.logger.info(
+      {
+        messageId: message.messageId,
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId
+      },
+      "Stored booking cancelled notification"
+    );
   }
 }
 

@@ -1,8 +1,8 @@
-import express, { type Express } from "express";
+import express, { type Express, type RequestHandler } from "express";
 import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import { createLogger } from "@event-booking/logger";
+import { createHttpLogger } from "@event-booking/logger";
 import {
   PrismaBookingRepository,
   type BookingDatabaseClient,
@@ -34,7 +34,7 @@ export async function createBookingApp({
   controller
 }: BookingServiceDependencies): Promise<Express> {
   const app = express();
-  const logger = createLogger("booking-service");
+  const httpLogger = createHttpLogger("booking-service");
   const bookingRepository = repository ?? new PrismaBookingRepository(db);
   const bookingOutboxDispatcher = outboxDispatcher ?? new BookingOutboxDispatcher(bookingRepository, publisher);
   const bookingService = service ?? new BookingsService(bookingRepository, bookingOutboxDispatcher);
@@ -45,7 +45,12 @@ export async function createBookingApp({
   app.use(cors());
   app.use(express.json({ limit: "1mb" }));
   app.use(requestIdMiddleware);
-  app.use(pinoHttp({ logger }));
+  const httpMiddleware = pinoHttp({
+    logger: httpLogger.logger,
+    genReqId: httpLogger.genReqId,
+    customProps: httpLogger.customProps
+  });
+  app.use(httpMiddleware as unknown as RequestHandler);
 
   app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
   app.get("/health/ready", async (_req, res) => {
