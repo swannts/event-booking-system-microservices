@@ -114,6 +114,9 @@ importers:
 
   services/event-service:
     dependencies:
+      '@event-booking/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@event-booking/logger':
         specifier: workspace:*
         version: link:../../packages/logger

@@ -9,17 +9,22 @@ import { InMemoryEventCache } from "./infrastructure/cache/event-cache";
 import { errorHandler } from "./middleware/error-handler";
 import { createEventRouter } from "./modules/events/event.routes";
 import { EventsService } from "./modules/events/event.service";
+import type { MessagePublisher } from "./infrastructure/messaging/message-publisher";
+import { InMemoryMessagePublisher } from "./infrastructure/messaging/message-publisher";
+import { BookingReservationConsumer } from "./modules/events/booking-reservation.consumer";
 
 export type EventServiceDependencies = {
   db: DatabaseClient;
   cache?: EventCache;
   cacheTtlSeconds?: number;
+  publisher?: MessagePublisher;
 };
 
 export async function createEventApp({
   db,
   cache = new InMemoryEventCache(),
-  cacheTtlSeconds = 120
+  cacheTtlSeconds = 120,
+  publisher = new InMemoryMessagePublisher()
 }: EventServiceDependencies): Promise<Express> {
   await ensureEventsTable(db);
 
@@ -27,6 +32,7 @@ export async function createEventApp({
   const logger = createLogger("event-service");
   const repository = new PostgresEventRepository(db);
   const service = new EventsService(repository, cache, cacheTtlSeconds);
+  void publisher;
 
   app.disable("x-powered-by");
   app.use(helmet());

@@ -58,3 +58,15 @@ export type BookingCancelledPayload = {
   eventId: string;
   quantity: number;
 };
+
+export type BookingConfirmedPayload = {
+  bookingId: string;
+  eventId: string;
+  quantity: number;
+};
+
+export type BookingFailedPayload = {
+  bookingId: string;
+  eventId: string;
+  reason: "INSUFFICIENT_SEATS" | "EVENT_NOT_FOUND";
+};

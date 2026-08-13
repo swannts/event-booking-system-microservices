@@ -69,6 +69,13 @@ export async function ensureBookingTables(db: BookingDatabaseClient) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS processed_booking_messages (
+      message_id UUID PRIMARY KEY,
+      processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }
 
 export class PostgresBookingRepository {
@@ -156,5 +163,25 @@ export class PostgresBookingRepository {
       [key]
     );
     return result.rows[0]?.response ?? null;
+  }
+
+  async hasProcessedMessage(messageId: string): Promise<boolean> {
+    const result = await this.db.query<{ message_id: string }>(
+      `SELECT message_id FROM processed_booking_messages WHERE message_id = $1`,
+      [messageId]
+    );
+
+    return result.rowCount > 0;
+  }
+
+  async markMessageProcessed(messageId: string): Promise<void> {
+    await this.db.query(
+      `
+      INSERT INTO processed_booking_messages (message_id)
+      VALUES ($1)
+      ON CONFLICT (message_id) DO NOTHING
+    `,
+      [messageId]
+    );
   }
 }
