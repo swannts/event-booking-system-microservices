@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+.git
+.env
+.idea
+**/generated
+**/dist
+**/node_modules
+**/tsconfig.tsbuildinfo
+services/*/generated
