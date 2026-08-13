@@ -3,6 +3,9 @@ import { z } from "zod";
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3001),
+  DATABASE_URL: z.string().min(1).default("postgresql://postgres:postgres@localhost:5432/event_booking"),
+  REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
+  CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(120),
   LOG_LEVEL: z.string().default("info")
 });
 
