@@ -1,0 +1,1 @@
+export { loadBookingServiceEnv } from "./env";

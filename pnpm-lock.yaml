@@ -53,6 +53,9 @@ importers:
 
   services/booking-service:
     dependencies:
+      '@event-booking/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@event-booking/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -65,9 +68,15 @@ importers:
       helmet:
         specifier: ^8.1.0
         version: 8.3.0
+      pg:
+        specifier: ^8.16.3
+        version: 8.23.0
       pino-http:
         specifier: ^11.0.0
         version: 11.0.0
+      uuid:
+        specifier: ^11.1.0
+        version: 11.1.1
       zod:
         specifier: ^4.1.8
         version: 4.4.3
@@ -81,12 +90,27 @@ importers:
       '@types/node':
         specifier: ^24.3.1
         version: 24.13.3
+      '@types/pg':
+        specifier: ^8.15.5
+        version: 8.21.0
+      '@types/supertest':
+        specifier: ^6.0.3
+        version: 6.0.3
+      pg-mem:
+        specifier: ^3.0.5
+        version: 3.0.14
+      supertest:
+        specifier: ^7.1.4
+        version: 7.2.2
       tsx:
         specifier: ^4.20.5
         version: 4.23.12
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)
 
   services/event-service:
     dependencies:

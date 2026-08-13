@@ -33,6 +33,14 @@ export type ReserveSeatsPayload = {
   quantity: number;
 };
 
+export type BookingCreatedPayload = {
+  bookingId: string;
+  userId: string;
+  eventId: string;
+  quantity: number;
+  status: BookingStatus;
+};
+
 export type SeatsReservedPayload = {
   bookingId: string;
   eventId: string;
@@ -43,4 +51,10 @@ export type SeatReservationFailedPayload = {
   bookingId: string;
   eventId: string;
   reason: "INSUFFICIENT_SEATS" | "EVENT_NOT_FOUND";
+};
+
+export type BookingCancelledPayload = {
+  bookingId: string;
+  eventId: string;
+  quantity: number;
 };
