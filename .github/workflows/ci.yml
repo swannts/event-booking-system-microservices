@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Generate Prisma clients
+        run: corepack pnpm -r --if-present run prisma:generate
+
+      - name: Build workspace
+        run: corepack pnpm build
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Generate Prisma clients
+        run: corepack pnpm -r --if-present run prisma:generate
+
+      - name: User service unit tests
+        run: corepack pnpm --dir services/user-service exec vitest run tests/unit
+
+      - name: Event service unit tests
+        run: corepack pnpm --dir services/event-service exec vitest run tests/unit
+
+      - name: Booking service unit tests
+        run: corepack pnpm --dir services/booking-service exec vitest run tests/unit
+
+      - name: Notification service tests
+        run: corepack pnpm --dir services/notification-service exec vitest run
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Generate Prisma clients
+        run: corepack pnpm -r --if-present run prisma:generate
+
+      - name: User service integration tests
+        run: corepack pnpm --dir services/user-service exec vitest run tests/integration
+
+      - name: Event service integration tests
+        run: corepack pnpm --dir services/event-service exec vitest run tests/integration tests/concurrency
+
+      - name: Booking service integration tests
+        run: corepack pnpm --dir services/booking-service exec vitest run tests/integration
