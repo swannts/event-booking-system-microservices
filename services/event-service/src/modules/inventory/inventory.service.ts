@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import {
   Topics,
+  type BookingCancelledPayload,
   type MessageEnvelope,
   type ReserveSeatsPayload,
   type SeatReservationFailedPayload,
@@ -34,6 +35,15 @@ export class InventoryService {
     const reserved = await repository.reserveSeats(message.payload.eventId, message.payload.quantity);
 
     if (!reserved) {
+      this.logger.warn(
+        {
+          messageId: message.messageId,
+          bookingId: message.payload.bookingId,
+          eventId: message.payload.eventId,
+          quantity: message.payload.quantity
+        },
+        "Insufficient seats for booking reservation"
+      );
       const failedMessage: MessageEnvelope<SeatReservationFailedPayload> = {
         messageId: randomUUID(),
         correlationId: message.correlationId,
@@ -48,10 +58,20 @@ export class InventoryService {
 
       await publisher.publish(Topics.SEAT_RESERVATION_FAILED, failedMessage);
       await repository.markMessageProcessed(message.messageId);
-      throw InventoryErrors.insufficientSeats();
+      return;
     }
 
     await cache.del(message.payload.eventId);
+    this.logger.info(
+      {
+        messageId: message.messageId,
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        quantity: message.payload.quantity
+      },
+      "Seats reserved and event cache invalidated"
+    );
+
     const successMessage: MessageEnvelope<SeatsReservedPayload> = {
       messageId: randomUUID(),
       correlationId: message.correlationId,
@@ -66,5 +86,67 @@ export class InventoryService {
 
     await publisher.publish(Topics.SEATS_RESERVED, successMessage);
     await repository.markMessageProcessed(message.messageId);
+    this.logger.info(
+      {
+        messageId: message.messageId,
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        quantity: message.payload.quantity
+      },
+      "Reservation success message published"
+    );
+  }
+
+  async releaseSeats(message: MessageEnvelope<BookingCancelledPayload>) {
+    const { repository, cache } = this.dependencies;
+
+    if (!Number.isInteger(message.payload.quantity) || message.payload.quantity <= 0) {
+      throw InventoryErrors.invalidQuantity();
+    }
+
+    const result = await repository.processReleaseSeatsMessage({
+      messageId: message.messageId,
+      eventId: message.payload.eventId,
+      quantity: message.payload.quantity
+    });
+
+    if (result.released) {
+      await cache.del(message.payload.eventId);
+      this.logger.info(
+        {
+          messageId: message.messageId,
+          bookingId: message.payload.bookingId,
+          eventId: message.payload.eventId,
+          quantity: message.payload.quantity
+        },
+        "Seats released and event cache invalidated"
+      );
+      return result;
+    }
+
+    if (result.duplicate) {
+      this.logger.info(
+        {
+          messageId: message.messageId,
+          bookingId: message.payload.bookingId,
+          eventId: message.payload.eventId,
+          quantity: message.payload.quantity
+        },
+        "Skipping duplicate release seats message"
+      );
+      return result;
+    }
+
+    this.logger.warn(
+      {
+        messageId: message.messageId,
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        quantity: message.payload.quantity,
+        reason: result.reason
+      },
+      "Release seats message rejected"
+    );
+    return result;
   }
 }

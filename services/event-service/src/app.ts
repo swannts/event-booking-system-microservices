@@ -8,8 +8,8 @@ import {
   type EventDatabaseClient,
   type EventRepository
 } from "./modules/events/event.repository";
-import type { EventCache } from "./infrastructure/cache/event.cache";
-import { InMemoryEventCache } from "./infrastructure/cache/event.cache";
+import type { EventCache } from "./infrastructure/cache/event-cache";
+import { InMemoryEventCache } from "./infrastructure/cache/event-cache";
 import { errorHandler } from "./middleware/error-handler";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { createEventRouter } from "./modules/events/event.routes";

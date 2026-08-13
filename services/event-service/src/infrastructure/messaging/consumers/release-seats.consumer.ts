@@ -1,7 +1,10 @@
-import type { MessageEnvelope, BookingCancelledPayload } from "@event-booking/contracts";
+import type { BookingCancelledPayload, MessageEnvelope } from "@event-booking/contracts";
+import { InventoryService } from "../../../modules/inventory/inventory.service";
 
 export class ReleaseSeatsConsumer {
-  async handle(_message: MessageEnvelope<BookingCancelledPayload>): Promise<void> {
-    return;
+  constructor(private readonly service: InventoryService) {}
+
+  async handle(message: MessageEnvelope<BookingCancelledPayload>): Promise<void> {
+    await this.service.releaseSeats(message);
   }
 }

@@ -7,13 +7,13 @@ import {
   type SeatsReservedPayload
 } from "@event-booking/contracts";
 import { createLogger, type AppLogger } from "@event-booking/logger";
-import type { EventCache } from "../../../infrastructure/cache/event.cache";
+import type { EventCache } from "../../../infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../message-publisher";
-import type { EventRepository } from "../../../modules/events/event.repository";
+import type { InventoryRepository } from "../../../modules/inventory/inventory.repository";
 
 export class BookingReservationConsumer {
   constructor(
-    private readonly repository: EventRepository,
+    private readonly repository: InventoryRepository,
     private readonly cache: EventCache,
     private readonly publisher: MessagePublisher,
     private readonly logger: AppLogger = createLogger("event-service")

@@ -35,14 +35,6 @@ export type EventDatabaseClient = {
       };
     }): Promise<{ count: number }>;
   };
-  processedEventMessage: {
-    findUnique(input: { where: { messageId: string } }): Promise<{ messageId: string; processedAt: Date } | null>;
-    upsert(input: {
-      where: { messageId: string };
-      update: Record<string, never>;
-      create: { messageId: string };
-    }): Promise<{ messageId: string; processedAt: Date }>;
-  };
   $connect(): Promise<void>;
   $disconnect(): Promise<void>;
 };
@@ -62,10 +54,6 @@ export interface EventRepository {
     input: { title: string; date: string; totalSeats: number }
   ): Promise<EventDto | null>;
   delete(id: string): Promise<boolean>;
-  reserveSeats(id: string, quantity: number): Promise<EventDto | null>;
-  releaseSeats(id: string, quantity: number): Promise<EventDto | null>;
-  hasProcessedMessage(messageId: string): Promise<boolean>;
-  markMessageProcessed(messageId: string): Promise<void>;
 }
 
 function mapRow(row: EventRecord): EventDto {
@@ -143,59 +131,5 @@ export class PrismaEventRepository implements EventRepository {
   async delete(id: string): Promise<boolean> {
     const result = await this.db.event.deleteMany({ where: { id } });
     return result.count > 0;
-  }
-
-  async reserveSeats(id: string, quantity: number): Promise<EventDto | null> {
-    const result = await this.db.event.updateMany({
-      where: {
-        id,
-        availableSeats: { gte: quantity }
-      },
-      data: {
-        availableSeats: {
-          decrement: quantity
-        },
-        updatedAt: new Date()
-      }
-    });
-
-    if (result.count === 0) {
-      return null;
-    }
-
-    const event = await this.db.event.findUnique({ where: { id } });
-    return event ? mapRow(event) : null;
-  }
-
-  async releaseSeats(id: string, quantity: number): Promise<EventDto | null> {
-    const result = await this.db.event.updateMany({
-      where: { id },
-      data: {
-        availableSeats: {
-          increment: quantity
-        },
-        updatedAt: new Date()
-      }
-    });
-
-    if (result.count === 0) {
-      return null;
-    }
-
-    const event = await this.db.event.findUnique({ where: { id } });
-    return event ? mapRow(event) : null;
-  }
-
-  async hasProcessedMessage(messageId: string): Promise<boolean> {
-    const record = await this.db.processedEventMessage.findUnique({ where: { messageId } });
-    return record !== null;
-  }
-
-  async markMessageProcessed(messageId: string): Promise<void> {
-    await this.db.processedEventMessage.upsert({
-      where: { messageId },
-      update: {},
-      create: { messageId }
-    });
   }
 }

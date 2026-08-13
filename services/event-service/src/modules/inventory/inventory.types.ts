@@ -1,9 +1,9 @@
-import type { EventCache } from "../../infrastructure/cache/event.cache";
+import type { EventCache } from "../../infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
-import type { EventRepository } from "../events/event.repository";
+import type { InventoryRepository } from "./inventory.repository";
 
 export type InventoryDependencies = {
-  repository: EventRepository;
+  repository: InventoryRepository;
   cache: EventCache;
   publisher: MessagePublisher;
 };

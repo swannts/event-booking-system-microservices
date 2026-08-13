@@ -26,3 +26,23 @@ model ProcessedEventMessage {
 
   @@map("processed_event_messages")
 }
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+}
+
+model EventOutboxEvent {
+  id          String      @id @db.Uuid
+  topic       String
+  messageId   String      @unique @map("message_id")
+  message     Json
+  status      OutboxStatus @default(PENDING)
+  attempts    Int         @default(0)
+  lastError   String?     @map("last_error")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  publishedAt DateTime?   @map("published_at")
+
+  @@map("event_outbox_events")
+}

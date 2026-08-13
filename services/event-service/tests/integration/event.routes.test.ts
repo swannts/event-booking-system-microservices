@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { randomUUID } from "crypto";
-import type { EventCache } from "../../src/infrastructure/cache/event.cache";
+import type { EventCache } from "../../src/infrastructure/cache/event-cache";
 import { createEventApp } from "../../src/app";
 import type { EventDatabaseClient } from "../../src/modules/events/event.repository";
 
@@ -22,7 +22,6 @@ type ProcessedMessageRow = {
 
 class FakeEventDatabase implements EventDatabaseClient {
   public readonly events = new Map<string, EventRow>();
-  public readonly processedMessages = new Map<string, ProcessedMessageRow>();
 
   public readonly event = {
     create: async ({
@@ -78,53 +77,6 @@ class FakeEventDatabase implements EventDatabaseClient {
     deleteMany: async ({ where }: { where: { id: string } }) => {
       const deleted = this.events.delete(where.id);
       return { count: deleted ? 1 : 0 };
-    },
-    updateMany: async ({
-      where,
-      data
-    }: {
-      where: { id: string; availableSeats?: { gte: number } };
-      data: { availableSeats?: { decrement?: number; increment?: number }; updatedAt?: Date };
-    }) => {
-      const current = this.events.get(where.id);
-      if (!current) {
-        return { count: 0 };
-      }
-
-      if (where.availableSeats?.gte !== undefined && current.availableSeats < where.availableSeats.gte) {
-        return { count: 0 };
-      }
-
-      const decrement = data.availableSeats?.decrement ?? 0;
-      const increment = data.availableSeats?.increment ?? 0;
-      const updated: EventRow = {
-        ...current,
-        availableSeats: current.availableSeats - decrement + increment,
-        updatedAt: data.updatedAt ?? new Date("2026-08-13T00:00:00.000Z")
-      };
-      this.events.set(where.id, updated);
-      return { count: 1 };
-    }
-  };
-
-  public readonly processedEventMessage = {
-    findUnique: async ({ where }: { where: { messageId: string } }) => {
-      return this.processedMessages.get(where.messageId) ?? null;
-    },
-    upsert: async ({
-      where,
-      create
-    }: {
-      where: { messageId: string };
-      update: Record<string, never>;
-      create: { messageId: string };
-    }) => {
-      const row: ProcessedMessageRow = this.processedMessages.get(where.messageId) ?? {
-        messageId: create.messageId,
-        processedAt: new Date("2026-08-13T00:00:00.000Z")
-      };
-      this.processedMessages.set(where.messageId, row);
-      return row;
     }
   };
 

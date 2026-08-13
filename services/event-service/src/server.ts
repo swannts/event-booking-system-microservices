@@ -9,7 +9,10 @@ import { createEventRedisClient } from "./config/redis";
 import { RedisEventCache } from "./infrastructure/cache/redis.client";
 import { PrismaEventRepository } from "./modules/events/event.repository";
 import { EventsService } from "./modules/events/event.service";
+import { PrismaInventoryRepository } from "./modules/inventory/inventory.repository";
+import { InventoryService } from "./modules/inventory/inventory.service";
 import { BookingReservationConsumer } from "./infrastructure/messaging/consumers/reserve-seats.consumer";
+import { ReleaseSeatsConsumer } from "./infrastructure/messaging/consumers/release-seats.consumer";
 
 async function main() {
   const env = loadEventServiceEnv();
@@ -25,8 +28,15 @@ async function main() {
   const publisher = new KafkaMessagePublisher(kafkaConfig);
   const cache = new RedisEventCache(redis);
   const repository = new PrismaEventRepository(db);
+  const inventoryRepository = new PrismaInventoryRepository(db);
   const service = new EventsService(repository, cache, env.CACHE_TTL_SECONDS);
-  const consumer = new BookingReservationConsumer(repository, cache, publisher);
+  const inventoryService = new InventoryService({
+    repository: inventoryRepository,
+    cache,
+    publisher
+  });
+  const consumer = new BookingReservationConsumer(inventoryRepository, cache, publisher);
+  const releaseConsumer = new ReleaseSeatsConsumer(inventoryService);
   const consumerRunner = new KafkaConsumerRunner(
     {
       clientId: kafkaConfig.clientId,
@@ -37,6 +47,10 @@ async function main() {
       {
         topic: Topics.RESERVE_SEATS,
         handler: (message) => consumer.handle(message as never)
+      },
+      {
+        topic: Topics.RELEASE_SEATS,
+        handler: (message) => releaseConsumer.handle(message as never)
       }
     ]
   );

@@ -78,36 +78,55 @@ export class KafkaConsumerRunner {
     );
   }
 
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   async start(): Promise<void> {
     if (this.running) {
       return;
     }
 
-    const kafka = createKafkaClient(this.config);
-    this.consumer = kafka.consumer({ groupId: this.config.groupId });
-    await this.consumer.connect();
-
     const topics = [...new Set(this.subscriptions.map((subscription) => subscription.topic))];
-    for (const topic of topics) {
-      await this.consumer.subscribe({ topic, fromBeginning: false });
-    }
-
     const handlers = this.getHandlers();
+    const maxAttempts = 10;
 
-    await this.consumer.run({
-      eachMessage: async ({ topic, message }) => {
-        const handler = handlers.get(topic as Topic);
-        const value = message.value?.toString();
-        if (!handler || !value) {
-          return;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const kafka = createKafkaClient(this.config);
+        this.consumer = kafka.consumer({ groupId: this.config.groupId });
+        await this.consumer.connect();
+
+        for (const topic of topics) {
+          await this.consumer.subscribe({ topic, fromBeginning: true });
         }
 
-        const parsed = JSON.parse(value) as MessageEnvelope<unknown>;
-        await handler(parsed);
-      }
-    });
+        await this.consumer.run({
+          eachMessage: async ({ topic, message }) => {
+            const handler = handlers.get(topic as Topic);
+            const value = message.value?.toString();
+            if (!handler || !value) {
+              return;
+            }
 
-    this.running = true;
+            const parsed = JSON.parse(value) as MessageEnvelope<unknown>;
+            await handler(parsed);
+          }
+        });
+
+        this.running = true;
+        return;
+      } catch (error) {
+        await this.consumer?.disconnect().catch(() => undefined);
+        this.consumer = null;
+
+        if (attempt === maxAttempts) {
+          throw error;
+        }
+
+        await this.sleep(1000 * attempt);
+      }
+    }
   }
 
   async stop(): Promise<void> {

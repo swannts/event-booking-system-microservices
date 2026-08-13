@@ -6,11 +6,11 @@ import {
   type ReserveSeatsPayload
 } from "@event-booking/contracts";
 import { BookingReservationConsumer } from "../../src/infrastructure/messaging/consumers/reserve-seats.consumer";
-import type { EventCache } from "../../src/infrastructure/cache/event.cache";
+import type { EventCache } from "../../src/infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
-import type { EventRepository } from "../../src/modules/events/event.repository";
+import type { InventoryRepository } from "../../src/modules/inventory/inventory.repository";
 
-class FakeRepo {
+class FakeRepo implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed"> {
   public processed = new Set<string>();
   public reserved = 0;
   constructor(private readonly shouldReserve: boolean) {}
@@ -75,7 +75,7 @@ function createMessage(eventId = "event-1"): MessageEnvelope<ReserveSeatsPayload
 
 describe("BookingReservationConsumer", () => {
   it("publishes seats reserved on success", async () => {
-    const repo = new FakeRepo(true) as unknown as EventRepository;
+    const repo = new FakeRepo(true) as unknown as InventoryRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
     const consumer = new BookingReservationConsumer(repo, cache, publisher);
@@ -88,7 +88,7 @@ describe("BookingReservationConsumer", () => {
   });
 
   it("publishes reservation failed on shortage", async () => {
-    const repo = new FakeRepo(false) as unknown as EventRepository;
+    const repo = new FakeRepo(false) as unknown as InventoryRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
     const consumer = new BookingReservationConsumer(repo, cache, publisher);
@@ -99,7 +99,7 @@ describe("BookingReservationConsumer", () => {
   });
 
   it("skips duplicate messages", async () => {
-    const repo = new FakeRepo(true) as unknown as EventRepository;
+    const repo = new FakeRepo(true) as unknown as InventoryRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
     const consumer = new BookingReservationConsumer(repo, cache, publisher);
