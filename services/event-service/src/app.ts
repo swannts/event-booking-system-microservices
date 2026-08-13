@@ -7,15 +7,17 @@ import {
   PrismaEventRepository,
   type EventDatabaseClient,
   type EventRepository
-} from "./infrastructure/database/event-repository";
-import type { EventCache } from "./infrastructure/cache/event-cache";
-import { InMemoryEventCache } from "./infrastructure/cache/event-cache";
+} from "./modules/events/event.repository";
+import type { EventCache } from "./infrastructure/cache/event.cache";
+import { InMemoryEventCache } from "./infrastructure/cache/event.cache";
 import { errorHandler } from "./middleware/error-handler";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { createEventRouter } from "./modules/events/event.routes";
 import { EventsService } from "./modules/events/event.service";
+import { EventController } from "./modules/events/event.controller";
 import type { MessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { InMemoryMessagePublisher } from "./infrastructure/messaging/message-publisher";
+import { notFoundHandler } from "./middleware/not-found";
 
 export type EventServiceDependencies = {
   db: EventDatabaseClient;
@@ -38,6 +40,7 @@ export async function createEventApp({
   const httpLogger = createHttpLogger("event-service");
   const eventRepository = repository ?? new PrismaEventRepository(db);
   const eventService = service ?? new EventsService(eventRepository, cache, cacheTtlSeconds);
+  const controller = new EventController(eventService);
   void publisher;
 
   app.disable("x-powered-by");
@@ -58,7 +61,8 @@ export async function createEventApp({
     res.json({ status: "ok" });
   });
 
-  app.use("/events", createEventRouter(eventService));
+  app.use("/events", createEventRouter(controller));
+  app.use(notFoundHandler);
   app.use(errorHandler);
 
   return app;

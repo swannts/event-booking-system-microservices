@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { randomUUID } from "crypto";
-import type { EventCache } from "../src/infrastructure/cache/event-cache";
-import { createEventApp } from "../src/app";
-import type { EventDatabaseClient } from "../src/infrastructure/database/event-repository";
+import type { EventCache } from "../../src/infrastructure/cache/event.cache";
+import { createEventApp } from "../../src/app";
+import type { EventDatabaseClient } from "../../src/modules/events/event.repository";
 
 type EventRow = {
   id: string;

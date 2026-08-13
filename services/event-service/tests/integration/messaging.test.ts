@@ -5,10 +5,10 @@ import {
   type MessageEnvelope,
   type ReserveSeatsPayload
 } from "@event-booking/contracts";
-import { BookingReservationConsumer } from "../src/modules/events/booking-reservation.consumer";
-import type { EventCache } from "../src/infrastructure/cache/event-cache";
-import type { MessagePublisher } from "../src/infrastructure/messaging/message-publisher";
-import type { EventRepository } from "../src/infrastructure/database/event-repository";
+import { BookingReservationConsumer } from "../../src/infrastructure/messaging/consumers/reserve-seats.consumer";
+import type { EventCache } from "../../src/infrastructure/cache/event.cache";
+import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
+import type { EventRepository } from "../../src/modules/events/event.repository";
 
 class FakeRepo {
   public processed = new Set<string>();

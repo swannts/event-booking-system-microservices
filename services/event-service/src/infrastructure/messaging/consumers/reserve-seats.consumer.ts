@@ -7,9 +7,9 @@ import {
   type SeatsReservedPayload
 } from "@event-booking/contracts";
 import { createLogger, type AppLogger } from "@event-booking/logger";
-import type { EventCache } from "../../infrastructure/cache/event-cache";
-import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
-import type { EventRepository } from "../../infrastructure/database/event-repository";
+import type { EventCache } from "../../../infrastructure/cache/event.cache";
+import type { MessagePublisher } from "../message-publisher";
+import type { EventRepository } from "../../../modules/events/event.repository";
 
 export class BookingReservationConsumer {
   constructor(

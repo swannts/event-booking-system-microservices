@@ -1,4 +1,3 @@
-import { createClient } from "redis";
 import { Topics } from "@event-booking/contracts";
 import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messaging";
 import { createLogger } from "@event-booking/logger";
@@ -6,27 +5,11 @@ import { loadEventServiceEnv } from "./config/env";
 import { createEventApp } from "./app";
 import { createEventDatabase } from "./config/database";
 import { createEventKafkaConfig } from "./config/kafka";
-import type { EventCache } from "./infrastructure/cache/event-cache";
-import { PrismaEventRepository } from "./infrastructure/database/event-repository";
-import { BookingReservationConsumer } from "./modules/events/booking-reservation.consumer";
+import { createEventRedisClient } from "./config/redis";
+import { RedisEventCache } from "./infrastructure/cache/redis.client";
+import { PrismaEventRepository } from "./modules/events/event.repository";
 import { EventsService } from "./modules/events/event.service";
-
-class RedisEventCache implements EventCache {
-  constructor(private readonly client: ReturnType<typeof createClient>) {}
-
-  async get(eventId: string) {
-    const value = await this.client.get(`event:${eventId}`);
-    return value ? JSON.parse(value) : null;
-  }
-
-  async set(eventId: string, event: unknown, ttlSeconds: number) {
-    await this.client.set(`event:${eventId}`, JSON.stringify(event), { EX: ttlSeconds });
-  }
-
-  async del(eventId: string) {
-    await this.client.del(`event:${eventId}`);
-  }
-}
+import { BookingReservationConsumer } from "./infrastructure/messaging/consumers/reserve-seats.consumer";
 
 async function main() {
   const env = loadEventServiceEnv();
@@ -34,7 +17,7 @@ async function main() {
   const db = createEventDatabase(env.DATABASE_URL);
   await db.$connect();
   const kafkaConfig = createEventKafkaConfig(env);
-  const redis = createClient({ url: env.REDIS_URL });
+  const redis = createEventRedisClient(env.REDIS_URL);
   redis.on("error", (error) => {
     logger.error({ error }, "Redis client error");
   });
@@ -50,7 +33,12 @@ async function main() {
       brokers: kafkaConfig.brokers,
       groupId: kafkaConfig.groupId
     },
-    [{ topic: Topics.RESERVE_SEATS, handler: (message) => consumer.handle(message as never) }]
+    [
+      {
+        topic: Topics.RESERVE_SEATS,
+        handler: (message) => consumer.handle(message as never)
+      }
+    ]
   );
   await consumerRunner.start();
 
