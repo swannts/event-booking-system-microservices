@@ -3,6 +3,7 @@ import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messa
 import { createBookingApp } from "./app";
 import { createBookingDatabase, createBookingKafkaConfig, loadBookingServiceEnv } from "./config";
 import { PrismaBookingRepository } from "./infrastructure/database/booking-repository";
+import { BookingOutboxDispatcher } from "./modules/bookings/booking-outbox.dispatcher";
 import { BookingEventsConsumer } from "./modules/bookings/booking-events.consumer";
 import { BookingController } from "./modules/bookings/booking.controller";
 import { BookingsService } from "./modules/bookings/booking.service";
@@ -14,7 +15,8 @@ async function main() {
   const kafkaConfig = createBookingKafkaConfig(env);
   const publisher = new KafkaMessagePublisher(kafkaConfig);
   const repository = new PrismaBookingRepository(db);
-  const service = new BookingsService(repository, publisher);
+  const outboxDispatcher = new BookingOutboxDispatcher(repository, publisher);
+  const service = new BookingsService(repository, outboxDispatcher);
   const controller = new BookingController(service);
   const consumer = new BookingEventsConsumer(repository, publisher);
   const consumerRunner = new KafkaConsumerRunner(
@@ -32,10 +34,12 @@ async function main() {
     ]
   );
   await consumerRunner.start();
+  outboxDispatcher.start();
   const app = await createBookingApp({
     db,
     publisher,
     repository,
+    outboxDispatcher,
     service,
     controller
   });
@@ -45,6 +49,7 @@ async function main() {
 
   const shutdown = () =>
     server.close(async () => {
+      outboxDispatcher.stop();
       await consumerRunner.stop();
       await publisher.disconnect();
       await db.$disconnect();

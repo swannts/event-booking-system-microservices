@@ -6,13 +6,13 @@ import {
   type ReserveSeatsPayload
 } from "@event-booking/contracts";
 import type { BookingDto, BookingRepository } from "../../infrastructure/database/booking-repository";
-import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
-import { BookingErrors, AppError } from "./booking-errors";
+import { BookingErrors } from "./booking-errors";
+import type { BookingOutboxDispatcher } from "./booking-outbox.dispatcher";
 
 export class BookingsService {
   constructor(
     private readonly repository: BookingRepository,
-    private readonly publisher: MessagePublisher
+    private readonly outboxDispatcher: BookingOutboxDispatcher
   ) {}
 
   async createBooking(input: {
@@ -28,37 +28,36 @@ export class BookingsService {
       }
     }
 
-    const booking = await this.repository.create({
-      id: randomUUID(),
-      userId: input.userId,
-      eventId: input.eventId,
-      quantity: input.quantity,
-      status: "PENDING",
-      idempotencyKey: input.idempotencyKey ?? null
-    });
-
-    if (input.idempotencyKey) {
-      await this.repository.storeIdempotencyKey({
-        key: input.idempotencyKey,
-        bookingId: booking.id,
-        response: booking
-      });
-    }
-
-    const reserveSeatsMessage: MessageEnvelope<ReserveSeatsPayload> = {
-      messageId: randomUUID(),
-      correlationId: booking.id,
-      timestamp: new Date().toISOString(),
-      version: 1,
-      payload: {
-        bookingId: booking.id,
-        eventId: booking.eventId,
-        userId: booking.userId,
-        quantity: booking.quantity
+    const bookingId = randomUUID();
+    const booking = await this.repository.createBookingWithOutbox(
+      {
+        id: bookingId,
+        userId: input.userId,
+        eventId: input.eventId,
+        quantity: input.quantity,
+        status: "PENDING",
+        idempotencyKey: input.idempotencyKey ?? null
+      },
+      {
+        id: randomUUID(),
+        topic: Topics.RESERVE_SEATS,
+        message: {
+          messageId: randomUUID(),
+          correlationId: bookingId,
+          timestamp: new Date().toISOString(),
+          version: 1,
+          eventId: input.eventId,
+          payload: {
+            bookingId,
+            eventId: input.eventId,
+            userId: input.userId,
+            quantity: input.quantity
+          }
+        } satisfies MessageEnvelope<ReserveSeatsPayload>
       }
-    };
+    );
 
-    await this.publisher.publish(Topics.RESERVE_SEATS, reserveSeatsMessage);
+    await this.outboxDispatcher.dispatchPending();
     return booking;
   }
 
@@ -80,24 +79,29 @@ export class BookingsService {
       throw BookingErrors.invalidStatus();
     }
 
-    const cancelled = await this.repository.updateStatus(id, "CANCELLED");
+    const cancelled = await this.repository.cancelBookingWithOutbox({
+      id,
+      outbox: {
+        id: randomUUID(),
+        topic: Topics.BOOKING_CANCELLED,
+        message: {
+          messageId: randomUUID(),
+          correlationId: booking.id,
+          timestamp: new Date().toISOString(),
+          version: 1,
+          eventId: booking.eventId,
+          payload: {
+            bookingId: booking.id,
+            eventId: booking.eventId,
+            quantity: booking.quantity
+          }
+        } satisfies MessageEnvelope<BookingCancelledPayload>
+      }
+    });
     if (!cancelled) {
       throw BookingErrors.notFound();
     }
-
-    const cancelMessage: MessageEnvelope<BookingCancelledPayload> = {
-      messageId: randomUUID(),
-      correlationId: booking.id,
-      timestamp: new Date().toISOString(),
-      version: 1,
-      payload: {
-        bookingId: booking.id,
-        eventId: booking.eventId,
-        quantity: booking.quantity
-      }
-    };
-
-    await this.publisher.publish(Topics.BOOKING_CANCELLED, cancelMessage);
+    await this.outboxDispatcher.dispatchPending();
     return cancelled;
   }
 

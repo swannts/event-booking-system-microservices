@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
+import type { BookingTransactionalClient } from "../infrastructure/database/booking-repository";
 
-export type BookingDatabase = PrismaClient;
+export type BookingDatabase = PrismaClient & BookingTransactionalClient;
 
 export function createBookingDatabase(connectionString: string): BookingDatabase {
   return new PrismaClient({
@@ -9,5 +10,5 @@ export function createBookingDatabase(connectionString: string): BookingDatabase
         url: connectionString
       }
     }
-  });
+  }) as BookingDatabase;
 }

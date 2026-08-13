@@ -15,6 +15,11 @@ enum BookingStatus {
   EXPIRED
 }
 
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+}
+
 model Booking {
   id             String        @id @db.Uuid
   userId         String        @map("user_id") @db.Uuid
@@ -42,4 +47,19 @@ model ProcessedBookingMessage {
   processedAt DateTime @default(now()) @map("processed_at")
 
   @@map("processed_booking_messages")
+}
+
+model BookingOutboxEvent {
+  id           String       @id @db.Uuid
+  topic        String
+  messageId    String       @unique @map("message_id")
+  message      Json
+  status       OutboxStatus  @default(PENDING)
+  attempts     Int          @default(0)
+  lastError    String?      @map("last_error")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  publishedAt  DateTime?    @map("published_at")
+
+  @@map("booking_outbox_events")
 }

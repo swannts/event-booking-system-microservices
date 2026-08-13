@@ -28,10 +28,24 @@ type ProcessedMessageRow = {
   processedAt: Date;
 };
 
+type OutboxRow = {
+  id: string;
+  topic: string;
+  messageId: string;
+  message: unknown;
+  status: "PENDING" | "PUBLISHED";
+  attempts: number;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+};
+
 class FakeBookingDatabase implements BookingDatabaseClient {
   public readonly bookings = new Map<string, BookingRow>();
   public readonly idempotencyKeys = new Map<string, IdempotencyRow>();
   public readonly processedMessages = new Map<string, ProcessedMessageRow>();
+  public readonly outboxEvents = new Map<string, OutboxRow>();
 
   public readonly booking = {
     create: async ({ data }: { data: Omit<BookingRow, "createdAt" | "updatedAt"> }) => {
@@ -90,6 +104,24 @@ class FakeBookingDatabase implements BookingDatabaseClient {
     findUnique: async ({ where }: { where: { key: string } }) => {
       return this.idempotencyKeys.get(where.key) ?? null;
     },
+    create: async ({
+      data
+    }: {
+      data: {
+        key: string;
+        bookingId: string;
+        response: unknown;
+      };
+    }) => {
+      const row: IdempotencyRow = {
+        key: data.key,
+        bookingId: data.bookingId,
+        response: data.response,
+        createdAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.idempotencyKeys.set(row.key, row);
+      return row;
+    },
     upsert: async ({
       where,
       update,
@@ -117,6 +149,79 @@ class FakeBookingDatabase implements BookingDatabaseClient {
     }
   };
 
+  public readonly bookingOutboxEvent = {
+    create: async ({
+      data
+    }: {
+      data: {
+        id: string;
+        topic: string;
+        messageId: string;
+        message: unknown;
+        status: "PENDING" | "PUBLISHED";
+        attempts: number;
+        lastError: string | null;
+        publishedAt: Date | null;
+      };
+    }) => {
+      const now = new Date("2026-08-13T00:00:00.000Z");
+      const row: OutboxRow = {
+        id: data.id,
+        topic: data.topic,
+        messageId: data.messageId,
+        message: data.message,
+        status: data.status,
+        attempts: data.attempts,
+        lastError: data.lastError,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: data.publishedAt
+      };
+      this.outboxEvents.set(row.id, row);
+      return row;
+    },
+    findUnique: async ({ where }: { where: { id: string } }) => {
+      return this.outboxEvents.get(where.id) ?? null;
+    },
+    findMany: async (input?: { where?: { status?: "PENDING" | "PUBLISHED" }; orderBy?: { createdAt?: "asc" | "desc" }; take?: number }) => {
+      let rows = [...this.outboxEvents.values()];
+      if (input?.where?.status) {
+        rows = rows.filter((row) => row.status === input.where.status);
+      }
+      rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+      if (input?.take !== undefined) {
+        rows = rows.slice(0, input.take);
+      }
+      return input?.orderBy?.createdAt === "desc" ? rows.reverse() : rows;
+    },
+    update: async ({
+      where,
+      data
+    }: {
+      where: { id: string };
+      data: Partial<{
+        status: "PENDING" | "PUBLISHED";
+        attempts: number;
+        lastError: string | null;
+        publishedAt: Date | null;
+        updatedAt: Date;
+      }>;
+    }) => {
+      const row = this.outboxEvents.get(where.id);
+      if (!row) {
+        throw new Error("Record not found");
+      }
+
+      const updated: OutboxRow = {
+        ...row,
+        ...data,
+        updatedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.outboxEvents.set(where.id, updated);
+      return updated;
+    }
+  };
+
   public readonly processedBookingMessage = {
     findUnique: async ({ where }: { where: { messageId: string } }) => {
       return this.processedMessages.get(where.messageId) ?? null;
@@ -141,6 +246,10 @@ class FakeBookingDatabase implements BookingDatabaseClient {
   async $connect() {}
 
   async $disconnect() {}
+
+  async $transaction<T>(fn: (client: BookingDatabaseClient) => Promise<T>): Promise<T> {
+    return fn(this);
+  }
 }
 
 class FakePublisher implements MessagePublisher {
