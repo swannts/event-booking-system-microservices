@@ -25,6 +25,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -32,20 +38,14 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Activate pnpm
-        run: corepack prepare pnpm@10.14.0 --activate
-
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma clients
-        run: corepack pnpm -r --if-present run prisma:generate
+        run: pnpm -r --if-present run prisma:generate
 
       - name: Build workspace
-        run: corepack pnpm build
+        run: pnpm build
 
   unit-tests:
     name: Unit Tests
@@ -56,6 +56,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -63,29 +69,23 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Activate pnpm
-        run: corepack prepare pnpm@10.14.0 --activate
-
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma clients
-        run: corepack pnpm -r --if-present run prisma:generate
+        run: pnpm -r --if-present run prisma:generate
 
       - name: User service unit tests
-        run: corepack pnpm --dir services/user-service exec vitest run tests/unit
+        run: pnpm --dir services/user-service exec vitest run tests/unit
 
       - name: Event service unit tests
-        run: corepack pnpm --dir services/event-service exec vitest run tests/unit
+        run: pnpm --dir services/event-service exec vitest run tests/unit
 
       - name: Booking service unit tests
-        run: corepack pnpm --dir services/booking-service exec vitest run tests/unit
+        run: pnpm --dir services/booking-service exec vitest run tests/unit
 
       - name: Notification service tests
-        run: corepack pnpm --dir services/notification-service exec vitest run
+        run: pnpm --dir services/notification-service exec vitest run
 
   integration-tests:
     name: Integration Tests
@@ -96,6 +96,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -103,23 +109,17 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Activate pnpm
-        run: corepack prepare pnpm@10.14.0 --activate
-
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma clients
-        run: corepack pnpm -r --if-present run prisma:generate
+        run: pnpm -r --if-present run prisma:generate
 
       - name: User service integration tests
-        run: corepack pnpm --dir services/user-service exec vitest run tests/integration
+        run: pnpm --dir services/user-service exec vitest run tests/integration
 
       - name: Event service integration tests
-        run: corepack pnpm --dir services/event-service exec vitest run tests/integration tests/concurrency
+        run: pnpm --dir services/event-service exec vitest run tests/integration tests/concurrency
 
       - name: Booking service integration tests
-        run: corepack pnpm --dir services/booking-service exec vitest run tests/integration
+        run: pnpm --dir services/booking-service exec vitest run tests/integration
