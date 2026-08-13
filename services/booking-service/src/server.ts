@@ -1,5 +1,4 @@
-import { Pool } from "pg";
-import { loadBookingServiceEnv } from "./config/env";
+import { createBookingDatabase, loadBookingServiceEnv } from "./config";
 import { createBookingApp } from "./app";
 import type { MessageEnvelope, Topic } from "@event-booking/contracts";
 import type { MessagePublisher } from "./infrastructure/messaging/message-publisher";
@@ -12,7 +11,7 @@ class ConsoleMessagePublisher implements MessagePublisher {
 
 async function main() {
   const env = loadBookingServiceEnv();
-  const db = new Pool({ connectionString: env.DATABASE_URL });
+  const db = createBookingDatabase(env.DATABASE_URL);
   const app = await createBookingApp({
     db,
     publisher: new ConsoleMessagePublisher()

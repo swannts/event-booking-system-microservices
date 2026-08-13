@@ -7,6 +7,8 @@ const schema = z.object({
   LOG_LEVEL: z.string().default("info")
 });
 
-export function loadBookingServiceEnv(env: NodeJS.ProcessEnv = process.env) {
+export type BookingServiceEnv = z.infer<typeof schema>;
+
+export function loadBookingServiceEnv(env: NodeJS.ProcessEnv = process.env): BookingServiceEnv {
   return schema.parse(env);
 }
