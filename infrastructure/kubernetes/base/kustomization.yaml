@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: event-booking
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: event-booking-system
+      app.kubernetes.io/part-of: event-booking-system
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: true
+    includeTemplates: true
+
+resources:
+  - namespace.yaml
+  - configmaps/app-config.yaml
+  - secrets/db-credentials.yaml
+  - user-service/pvc.yaml
+  - user-service/service.yaml
+  - user-service/deployment.yaml
+  - event-db/service.yaml
+  - event-db/statefulset.yaml
+  - booking-db/service.yaml
+  - booking-db/statefulset.yaml
+  - redis/service.yaml
+  - redis/deployment.yaml
+  - kafka/service.yaml
+  - kafka/deployment.yaml
+  - event-service/service.yaml
+  - event-service/deployment.yaml
+  - booking-service/service.yaml
+  - booking-service/deployment.yaml
+  - notification-service/service.yaml
+  - notification-service/deployment.yaml
