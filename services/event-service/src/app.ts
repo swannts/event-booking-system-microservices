@@ -3,7 +3,11 @@ import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { createLogger } from "@event-booking/logger";
-import { PrismaEventRepository, type EventDatabaseClient } from "./infrastructure/database/event-repository";
+import {
+  PrismaEventRepository,
+  type EventDatabaseClient,
+  type EventRepository
+} from "./infrastructure/database/event-repository";
 import type { EventCache } from "./infrastructure/cache/event-cache";
 import { InMemoryEventCache } from "./infrastructure/cache/event-cache";
 import { errorHandler } from "./middleware/error-handler";
@@ -17,18 +21,22 @@ export type EventServiceDependencies = {
   cache?: EventCache;
   cacheTtlSeconds?: number;
   publisher?: MessagePublisher;
+  repository?: EventRepository;
+  service?: EventsService;
 };
 
 export async function createEventApp({
   db,
   cache = new InMemoryEventCache(),
   cacheTtlSeconds = 120,
-  publisher = new InMemoryMessagePublisher()
+  publisher = new InMemoryMessagePublisher(),
+  repository,
+  service
 }: EventServiceDependencies): Promise<Express> {
   const app = express();
   const logger = createLogger("event-service");
-  const repository = new PrismaEventRepository(db);
-  const service = new EventsService(repository, cache, cacheTtlSeconds);
+  const eventRepository = repository ?? new PrismaEventRepository(db);
+  const eventService = service ?? new EventsService(eventRepository, cache, cacheTtlSeconds);
   void publisher;
 
   app.disable("x-powered-by");
@@ -43,7 +51,7 @@ export async function createEventApp({
     res.json({ status: "ok" });
   });
 
-  app.use("/events", createEventRouter(service));
+  app.use("/events", createEventRouter(eventService));
   app.use(errorHandler);
 
   return app;

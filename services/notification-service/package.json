@@ -12,6 +12,7 @@
   "dependencies": {
     "@event-booking/contracts": "workspace:*",
     "@event-booking/logger": "workspace:*",
+    "@event-booking/messaging": "workspace:*",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "helmet": "^8.1.0",

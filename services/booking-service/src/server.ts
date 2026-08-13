@@ -1,21 +1,43 @@
-import { createBookingDatabase, loadBookingServiceEnv } from "./config";
+import { Topics } from "@event-booking/contracts";
+import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messaging";
 import { createBookingApp } from "./app";
-import type { MessageEnvelope, Topic } from "@event-booking/contracts";
-import type { MessagePublisher } from "./infrastructure/messaging/message-publisher";
-
-class ConsoleMessagePublisher implements MessagePublisher {
-  async publish<TPayload>(topic: Topic, message: MessageEnvelope<TPayload>) {
-    console.log(JSON.stringify({ topic, ...message }));
-  }
-}
+import { createBookingDatabase, createBookingKafkaConfig, loadBookingServiceEnv } from "./config";
+import { PrismaBookingRepository } from "./infrastructure/database/booking-repository";
+import { BookingEventsConsumer } from "./modules/bookings/booking-events.consumer";
+import { BookingController } from "./modules/bookings/booking.controller";
+import { BookingsService } from "./modules/bookings/booking.service";
 
 async function main() {
   const env = loadBookingServiceEnv();
   const db = createBookingDatabase(env.DATABASE_URL);
   await db.$connect();
+  const kafkaConfig = createBookingKafkaConfig(env);
+  const publisher = new KafkaMessagePublisher(kafkaConfig);
+  const repository = new PrismaBookingRepository(db);
+  const service = new BookingsService(repository, publisher);
+  const controller = new BookingController(service);
+  const consumer = new BookingEventsConsumer(repository, publisher);
+  const consumerRunner = new KafkaConsumerRunner(
+    {
+      clientId: kafkaConfig.clientId,
+      brokers: kafkaConfig.brokers,
+      groupId: kafkaConfig.groupId
+    },
+    [
+      { topic: Topics.SEATS_RESERVED, handler: (message) => consumer.handleSeatsReserved(message as never) },
+      {
+        topic: Topics.SEAT_RESERVATION_FAILED,
+        handler: (message) => consumer.handleSeatReservationFailed(message as never)
+      }
+    ]
+  );
+  await consumerRunner.start();
   const app = await createBookingApp({
     db,
-    publisher: new ConsoleMessagePublisher()
+    publisher,
+    repository,
+    service,
+    controller
   });
   const server = app.listen(env.PORT, () => {
     console.log(`booking-service listening on ${env.PORT}`);
@@ -23,6 +45,8 @@ async function main() {
 
   const shutdown = () =>
     server.close(async () => {
+      await consumerRunner.stop();
+      await publisher.disconnect();
       await db.$disconnect();
       process.exit(0);
     });

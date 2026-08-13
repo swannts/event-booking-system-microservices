@@ -3,7 +3,11 @@ import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { createLogger } from "@event-booking/logger";
-import { PrismaBookingRepository, type BookingDatabaseClient } from "./infrastructure/database/booking-repository";
+import {
+  PrismaBookingRepository,
+  type BookingDatabaseClient,
+  type BookingRepository
+} from "./infrastructure/database/booking-repository";
 import { InMemoryMessagePublisher, type MessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { errorHandler } from "./middleware/error-handler";
 import { BookingController } from "./modules/bookings/booking.controller";
@@ -13,14 +17,23 @@ import { BookingsService } from "./modules/bookings/booking.service";
 export type BookingServiceDependencies = {
   db: BookingDatabaseClient;
   publisher?: MessagePublisher;
+  repository?: BookingRepository;
+  service?: BookingsService;
+  controller?: BookingController;
 };
 
-export async function createBookingApp({ db, publisher = new InMemoryMessagePublisher() }: BookingServiceDependencies): Promise<Express> {
+export async function createBookingApp({
+  db,
+  publisher = new InMemoryMessagePublisher(),
+  repository,
+  service,
+  controller
+}: BookingServiceDependencies): Promise<Express> {
   const app = express();
   const logger = createLogger("booking-service");
-  const repository = new PrismaBookingRepository(db);
-  const service = new BookingsService(repository, publisher);
-  const controller = new BookingController(service);
+  const bookingRepository = repository ?? new PrismaBookingRepository(db);
+  const bookingService = service ?? new BookingsService(bookingRepository, publisher);
+  const bookingController = controller ?? new BookingController(bookingService);
 
   app.disable("x-powered-by");
   app.use(helmet());
@@ -34,7 +47,7 @@ export async function createBookingApp({ db, publisher = new InMemoryMessagePubl
     res.json({ status: "ok" });
   });
 
-  app.use("/bookings", createBookingRouter(controller));
+  app.use("/bookings", createBookingRouter(bookingController));
   app.use(errorHandler);
 
   return app;
