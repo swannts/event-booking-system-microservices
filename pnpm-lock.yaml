@@ -178,6 +178,9 @@ importers:
 
   services/notification-service:
     dependencies:
+      '@event-booking/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@event-booking/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -206,12 +209,21 @@ importers:
       '@types/node':
         specifier: ^24.3.1
         version: 24.13.3
+      '@types/supertest':
+        specifier: ^6.0.3
+        version: 6.0.3
+      supertest:
+        specifier: ^7.1.4
+        version: 7.2.2
       tsx:
         specifier: ^4.20.5
         version: 4.23.12
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)
 
   services/user-service:
     dependencies:
