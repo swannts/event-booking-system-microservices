@@ -10,6 +10,7 @@ import {
 } from "./infrastructure/database/booking-repository";
 import { InMemoryMessagePublisher, type MessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { errorHandler } from "./middleware/error-handler";
+import { requestIdMiddleware } from "./middleware/request-id";
 import { BookingController } from "./modules/bookings/booking.controller";
 import { BookingOutboxDispatcher } from "./modules/bookings/booking-outbox.dispatcher";
 import { createBookingRouter } from "./modules/bookings/booking.routes";
@@ -43,6 +44,7 @@ export async function createBookingApp({
   app.use(helmet());
   app.use(cors());
   app.use(express.json({ limit: "1mb" }));
+  app.use(requestIdMiddleware);
   app.use(pinoHttp({ logger }));
 
   app.get("/health/live", (_req, res) => res.json({ status: "ok" }));

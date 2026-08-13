@@ -280,6 +280,7 @@ describe("Booking Service", () => {
   it("creates a pending booking and publishes reserve seats", async () => {
     const res = await request(app)
       .post("/bookings")
+      .set("x-request-id", "req-123")
       .send({
         userId: "550e8400-e29b-41d4-a716-446655440000",
         eventId: "550e8400-e29b-41d4-a716-446655440001",
@@ -288,6 +289,7 @@ describe("Booking Service", () => {
       .expect(201);
 
     expect(res.body.status).toBe("PENDING");
+    expect(res.headers["x-request-id"]).toBe("req-123");
     expect(publisher.published[0]?.topic).toBe("booking.reserve-seats");
   });
 
