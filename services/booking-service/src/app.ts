@@ -3,7 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { createLogger } from "@event-booking/logger";
-import { ensureBookingTables, PostgresBookingRepository, type BookingDatabaseClient } from "./infrastructure/database/booking-repository";
+import { PrismaBookingRepository, type BookingDatabaseClient } from "./infrastructure/database/booking-repository";
 import { InMemoryMessagePublisher, type MessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { errorHandler } from "./middleware/error-handler";
 import { createBookingRouter } from "./modules/bookings/booking.routes";
@@ -15,11 +15,9 @@ export type BookingServiceDependencies = {
 };
 
 export async function createBookingApp({ db, publisher = new InMemoryMessagePublisher() }: BookingServiceDependencies): Promise<Express> {
-  await ensureBookingTables(db);
-
   const app = express();
   const logger = createLogger("booking-service");
-  const repository = new PostgresBookingRepository(db);
+  const repository = new PrismaBookingRepository(db);
   const service = new BookingsService(repository, publisher);
 
   app.disable("x-powered-by");
@@ -30,7 +28,7 @@ export async function createBookingApp({ db, publisher = new InMemoryMessagePubl
 
   app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
   app.get("/health/ready", async (_req, res) => {
-    await db.query("SELECT 1");
+    await db.$connect();
     res.json({ status: "ok" });
   });
 

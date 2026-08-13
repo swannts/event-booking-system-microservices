@@ -8,11 +8,11 @@ import {
   type SeatsReservedPayload
 } from "@event-booking/contracts";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
-import type { PostgresBookingRepository } from "../../infrastructure/database/booking-repository";
+import type { BookingRepository } from "../../infrastructure/database/booking-repository";
 
 export class BookingEventsConsumer {
   constructor(
-    private readonly repository: PostgresBookingRepository,
+    private readonly repository: BookingRepository,
     private readonly publisher: MessagePublisher
   ) {}
 

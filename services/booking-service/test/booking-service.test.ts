@@ -1,8 +1,147 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { newDb } from "pg-mem";
 import { createBookingApp } from "../src/app";
+import type { BookingDatabaseClient } from "../src/infrastructure/database/booking-repository";
 import type { MessagePublisher } from "../src/infrastructure/messaging/message-publisher";
+import type { BookingStatus } from "@event-booking/contracts";
+
+type BookingRow = {
+  id: string;
+  userId: string;
+  eventId: string;
+  quantity: number;
+  status: BookingStatus;
+  idempotencyKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type IdempotencyRow = {
+  key: string;
+  bookingId: string;
+  response: unknown;
+  createdAt: Date;
+};
+
+type ProcessedMessageRow = {
+  messageId: string;
+  processedAt: Date;
+};
+
+class FakeBookingDatabase implements BookingDatabaseClient {
+  public readonly bookings = new Map<string, BookingRow>();
+  public readonly idempotencyKeys = new Map<string, IdempotencyRow>();
+  public readonly processedMessages = new Map<string, ProcessedMessageRow>();
+
+  public readonly booking = {
+    create: async ({ data }: { data: Omit<BookingRow, "createdAt" | "updatedAt"> }) => {
+      const now = new Date("2026-08-13T00:00:00.000Z");
+      const row: BookingRow = {
+        ...data,
+        createdAt: now,
+        updatedAt: now
+      };
+      this.bookings.set(row.id, row);
+      return row;
+    },
+    findUnique: async ({ where }: { where: { id?: string; idempotencyKey?: string } }) => {
+      if (where.id) {
+        return this.bookings.get(where.id) ?? null;
+      }
+
+      if (where.idempotencyKey) {
+        const booking = [...this.bookings.values()].find((row) => row.idempotencyKey === where.idempotencyKey);
+        return booking ?? null;
+      }
+
+      return null;
+    },
+    findMany: async (input?: { where?: { userId?: string }; orderBy?: { createdAt?: "asc" | "desc" } }) => {
+      const rows = [...this.bookings.values()].filter((row) =>
+        input?.where?.userId ? row.userId === input.where.userId : true
+      );
+
+      rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+      return input?.orderBy?.createdAt === "desc" ? rows.reverse() : rows;
+    },
+    update: async ({
+      where,
+      data
+    }: {
+      where: { id: string };
+      data: Partial<{ status: BookingStatus; updatedAt: Date }>;
+    }) => {
+      const row = this.bookings.get(where.id);
+      if (!row) {
+        throw new Error("Record not found");
+      }
+
+      const updated: BookingRow = {
+        ...row,
+        ...data,
+        updatedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.bookings.set(where.id, updated);
+      return updated;
+    }
+  };
+
+  public readonly bookingIdempotencyKey = {
+    findUnique: async ({ where }: { where: { key: string } }) => {
+      return this.idempotencyKeys.get(where.key) ?? null;
+    },
+    upsert: async ({
+      where,
+      update,
+      create
+    }: {
+      where: { key: string };
+      update: { bookingId: string; response: unknown };
+      create: { key: string; bookingId: string; response: unknown };
+    }) => {
+      const existing = this.idempotencyKeys.get(where.key);
+      const row: IdempotencyRow = existing
+        ? {
+            ...existing,
+            ...update
+          }
+        : {
+            key: create.key,
+            bookingId: create.bookingId,
+            response: create.response,
+            createdAt: new Date("2026-08-13T00:00:00.000Z")
+          };
+
+      this.idempotencyKeys.set(where.key, row);
+      return row;
+    }
+  };
+
+  public readonly processedBookingMessage = {
+    findUnique: async ({ where }: { where: { messageId: string } }) => {
+      return this.processedMessages.get(where.messageId) ?? null;
+    },
+    upsert: async ({
+      where,
+      create
+    }: {
+      where: { messageId: string };
+      update: Record<string, never>;
+      create: { messageId: string };
+    }) => {
+      const row: ProcessedMessageRow = this.processedMessages.get(where.messageId) ?? {
+        messageId: create.messageId,
+        processedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.processedMessages.set(where.messageId, row);
+      return row;
+    }
+  };
+
+  async $connect() {}
+
+  async $disconnect() {}
+}
 
 class FakePublisher implements MessagePublisher {
   public published: Array<{ topic: string; message: unknown }> = [];
@@ -13,12 +152,10 @@ class FakePublisher implements MessagePublisher {
 }
 
 async function createTestApp() {
-  const db = newDb({ autoCreateForeignKeyIndices: true });
-  const { Pool } = db.adapters.createPg();
-  const pool = new Pool();
+  const db = new FakeBookingDatabase();
   const publisher = new FakePublisher();
-  const app = await createBookingApp({ db: pool, publisher });
-  return { app, publisher, db: pool };
+  const app = await createBookingApp({ db, publisher });
+  return { app, publisher, db };
 }
 
 describe("Booking Service", () => {

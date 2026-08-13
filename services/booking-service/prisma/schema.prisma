@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+model Booking {
+  id             String        @id @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  eventId        String        @map("event_id") @db.Uuid
+  quantity       Int
+  status         BookingStatus
+  idempotencyKey String?       @unique @map("idempotency_key")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@map("bookings")
+}
+
+model BookingIdempotencyKey {
+  key        String   @id
+  bookingId  String   @unique @map("booking_id")
+  response   Json
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("booking_idempotency_keys")
+}
+
+model ProcessedBookingMessage {
+  messageId   String   @id @map("message_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_booking_messages")
+}

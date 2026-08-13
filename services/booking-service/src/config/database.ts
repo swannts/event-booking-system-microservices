@@ -1,7 +1,13 @@
-import { Pool } from "pg";
+import { PrismaClient } from "@prisma/client";
 
-export type BookingDatabase = Pool;
+export type BookingDatabase = PrismaClient;
 
 export function createBookingDatabase(connectionString: string): BookingDatabase {
-  return new Pool({ connectionString });
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: connectionString
+      }
+    }
+  });
 }

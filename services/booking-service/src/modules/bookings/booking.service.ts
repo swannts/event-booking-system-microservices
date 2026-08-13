@@ -5,13 +5,13 @@ import {
   type MessageEnvelope,
   type ReserveSeatsPayload
 } from "@event-booking/contracts";
-import type { BookingDto, PostgresBookingRepository } from "../../infrastructure/database/booking-repository";
+import type { BookingDto, BookingRepository } from "../../infrastructure/database/booking-repository";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
 import { BookingErrors, AppError } from "./booking-errors";
 
 export class BookingsService {
   constructor(
-    private readonly repository: PostgresBookingRepository,
+    private readonly repository: BookingRepository,
     private readonly publisher: MessagePublisher
   ) {}
 

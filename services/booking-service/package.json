@@ -6,16 +6,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/server.ts",
+    "postinstall": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate",
+    "prisma:generate": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@event-booking/contracts": "workspace:*",
     "@event-booking/logger": "workspace:*",
+    "@prisma/client": "^6.16.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
-    "pg": "^8.16.3",
     "pino-http": "^11.0.0",
     "uuid": "^11.1.0",
     "zod": "^4.1.8"
@@ -23,10 +25,9 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
-    "@types/pg": "^8.15.5",
     "@types/node": "^24.3.1",
     "@types/supertest": "^6.0.3",
-    "pg-mem": "^3.0.5",
+    "prisma": "^6.16.0",
     "supertest": "^7.1.4",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",

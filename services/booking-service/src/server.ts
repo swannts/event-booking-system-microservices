@@ -12,6 +12,7 @@ class ConsoleMessagePublisher implements MessagePublisher {
 async function main() {
   const env = loadBookingServiceEnv();
   const db = createBookingDatabase(env.DATABASE_URL);
+  await db.$connect();
   const app = await createBookingApp({
     db,
     publisher: new ConsoleMessagePublisher()
@@ -22,7 +23,7 @@ async function main() {
 
   const shutdown = () =>
     server.close(async () => {
-      await db.end();
+      await db.$disconnect();
       process.exit(0);
     });
   process.on("SIGINT", shutdown);

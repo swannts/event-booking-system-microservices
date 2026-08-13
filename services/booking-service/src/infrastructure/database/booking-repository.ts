@@ -1,16 +1,7 @@
-import type { QueryResultRow } from "pg";
+import type { Prisma, Booking as BookingModel, PrismaClient } from "@prisma/client";
 import type { BookingStatus } from "@event-booking/contracts";
 
-export type BookingRecord = {
-  id: string;
-  user_id: string;
-  event_id: string;
-  quantity: number;
-  status: BookingStatus;
-  idempotency_key: string | null;
-  created_at: Date;
-  updated_at: Date;
-};
+export type BookingRecord = BookingModel;
 
 export type BookingDto = {
   id: string;
@@ -24,61 +15,110 @@ export type BookingDto = {
 };
 
 export type BookingDatabaseClient = {
-  query<T extends QueryResultRow = QueryResultRow>(
-    text: string,
-    params?: readonly unknown[]
-  ): Promise<{
-    rows: T[];
-    rowCount: number;
-  }>;
-  end(): Promise<void>;
+  booking: {
+    create(input: {
+      data: {
+        id: string;
+        userId: string;
+        eventId: string;
+        quantity: number;
+        status: BookingStatus;
+        idempotencyKey: string | null;
+      };
+    }): Promise<BookingRecord>;
+    findUnique(input: { where: { id?: string; idempotencyKey?: string } }): Promise<BookingRecord | null>;
+    findMany(input?: {
+      where?: { userId?: string };
+      orderBy?: { createdAt?: "asc" | "desc" };
+    }): Promise<BookingRecord[]>;
+    update(input: {
+      where: { id: string };
+      data: Partial<{
+        status: BookingStatus;
+        updatedAt: Date;
+      }>;
+    }): Promise<BookingRecord>;
+  };
+  bookingIdempotencyKey: {
+    findUnique(input: { where: { key: string } }): Promise<{
+      key: string;
+      bookingId: string;
+      response: Prisma.JsonValue;
+      createdAt: Date;
+    } | null>;
+    upsert(input: {
+      where: { key: string };
+      update: {
+        bookingId: string;
+        response: Prisma.InputJsonValue;
+      };
+      create: {
+        key: string;
+        bookingId: string;
+        response: Prisma.InputJsonValue;
+      };
+    }): Promise<{
+      key: string;
+      bookingId: string;
+      response: Prisma.JsonValue;
+      createdAt: Date;
+    }>;
+  };
+  processedBookingMessage: {
+    findUnique(input: { where: { messageId: string } }): Promise<{
+      messageId: string;
+      processedAt: Date;
+    } | null>;
+    upsert(input: {
+      where: { messageId: string };
+      update: Record<string, never>;
+      create: { messageId: string };
+    }): Promise<{
+      messageId: string;
+      processedAt: Date;
+    }>;
+  };
+  $connect(): Promise<void>;
+  $disconnect(): Promise<void>;
 };
+
+export interface BookingRepository {
+  create(input: {
+    id: string;
+    userId: string;
+    eventId: string;
+    quantity: number;
+    status: BookingStatus;
+    idempotencyKey: string | null;
+  }): Promise<BookingDto>;
+  findById(id: string): Promise<BookingDto | null>;
+  findByUserId(userId: string): Promise<BookingDto[]>;
+  findByIdempotencyKey(key: string): Promise<BookingDto | null>;
+  updateStatus(id: string, status: BookingStatus): Promise<BookingDto | null>;
+  storeIdempotencyKey(input: {
+    key: string;
+    bookingId: string;
+    response: unknown;
+  }): Promise<void>;
+  findIdempotencyResponse(key: string): Promise<unknown | null>;
+  hasProcessedMessage(messageId: string): Promise<boolean>;
+  markMessageProcessed(messageId: string): Promise<void>;
+}
 
 function mapRow(row: BookingRecord): BookingDto {
   return {
     id: row.id,
-    userId: row.user_id,
-    eventId: row.event_id,
+    userId: row.userId,
+    eventId: row.eventId,
     quantity: row.quantity,
     status: row.status,
-    idempotencyKey: row.idempotency_key,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString()
+    idempotencyKey: row.idempotencyKey,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
   };
 }
 
-export async function ensureBookingTables(db: BookingDatabaseClient) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS bookings (
-      id UUID PRIMARY KEY,
-      user_id UUID NOT NULL,
-      event_id UUID NOT NULL,
-      quantity INTEGER NOT NULL CHECK (quantity > 0),
-      status VARCHAR(32) NOT NULL,
-      idempotency_key VARCHAR(255) UNIQUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS booking_idempotency_keys (
-      key VARCHAR(255) PRIMARY KEY,
-      booking_id UUID NOT NULL UNIQUE,
-      response JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS processed_booking_messages (
-      message_id UUID PRIMARY KEY,
-      processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-}
-
-export class PostgresBookingRepository {
+export class PrismaBookingRepository implements BookingRepository {
   constructor(private readonly db: BookingDatabaseClient) {}
 
   async create(input: {
@@ -89,58 +129,52 @@ export class PostgresBookingRepository {
     status: BookingStatus;
     idempotencyKey: string | null;
   }): Promise<BookingDto> {
-    const result = await this.db.query<BookingRecord>(
-      `
-      INSERT INTO bookings (id, user_id, event_id, quantity, status, idempotency_key)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, user_id, event_id, quantity, status, idempotency_key, created_at, updated_at
-    `,
-      [input.id, input.userId, input.eventId, input.quantity, input.status, input.idempotencyKey]
-    );
+    const booking = await this.db.booking.create({
+      data: {
+        id: input.id,
+        userId: input.userId,
+        eventId: input.eventId,
+        quantity: input.quantity,
+        status: input.status,
+        idempotencyKey: input.idempotencyKey
+      }
+    });
 
-    return mapRow(result.rows[0]);
+    return mapRow(booking);
   }
 
   async findById(id: string): Promise<BookingDto | null> {
-    const result = await this.db.query<BookingRecord>(
-      `SELECT id, user_id, event_id, quantity, status, idempotency_key, created_at, updated_at FROM bookings WHERE id = $1`,
-      [id]
-    );
-
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+    const booking = await this.db.booking.findUnique({ where: { id } });
+    return booking ? mapRow(booking) : null;
   }
 
   async findByUserId(userId: string): Promise<BookingDto[]> {
-    const result = await this.db.query<BookingRecord>(
-      `SELECT id, user_id, event_id, quantity, status, idempotency_key, created_at, updated_at FROM bookings WHERE user_id = $1 ORDER BY created_at ASC`,
-      [userId]
-    );
+    const bookings = await this.db.booking.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" }
+    });
 
-    return result.rows.map(mapRow);
+    return bookings.map(mapRow);
   }
 
   async findByIdempotencyKey(key: string): Promise<BookingDto | null> {
-    const result = await this.db.query<BookingRecord>(
-      `SELECT id, user_id, event_id, quantity, status, idempotency_key, created_at, updated_at FROM bookings WHERE idempotency_key = $1`,
-      [key]
-    );
-
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+    const booking = await this.db.booking.findUnique({ where: { idempotencyKey: key } });
+    return booking ? mapRow(booking) : null;
   }
 
   async updateStatus(id: string, status: BookingStatus): Promise<BookingDto | null> {
-    const result = await this.db.query<BookingRecord>(
-      `
-      UPDATE bookings
-      SET status = $2,
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING id, user_id, event_id, quantity, status, idempotency_key, created_at, updated_at
-    `,
-      [id, status]
-    );
+    try {
+      const booking = await this.db.booking.update({
+        where: { id },
+        data: {
+          status
+        }
+      });
 
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+      return mapRow(booking);
+    } catch {
+      return null;
+    }
   }
 
   async storeIdempotencyKey(input: {
@@ -148,40 +182,35 @@ export class PostgresBookingRepository {
     bookingId: string;
     response: unknown;
   }): Promise<void> {
-    await this.db.query(
-      `
-      INSERT INTO booking_idempotency_keys (key, booking_id, response)
-      VALUES ($1, $2, $3)
-    `,
-      [input.key, input.bookingId, JSON.stringify(input.response)]
-    );
+    await this.db.bookingIdempotencyKey.upsert({
+      where: { key: input.key },
+      update: {
+        bookingId: input.bookingId,
+        response: input.response as Prisma.InputJsonValue
+      },
+      create: {
+        key: input.key,
+        bookingId: input.bookingId,
+        response: input.response as Prisma.InputJsonValue
+      }
+    });
   }
 
   async findIdempotencyResponse(key: string): Promise<unknown | null> {
-    const result = await this.db.query<{ response: unknown }>(
-      `SELECT response FROM booking_idempotency_keys WHERE key = $1`,
-      [key]
-    );
-    return result.rows[0]?.response ?? null;
+    const record = await this.db.bookingIdempotencyKey.findUnique({ where: { key } });
+    return record?.response ?? null;
   }
 
   async hasProcessedMessage(messageId: string): Promise<boolean> {
-    const result = await this.db.query<{ message_id: string }>(
-      `SELECT message_id FROM processed_booking_messages WHERE message_id = $1`,
-      [messageId]
-    );
-
-    return result.rowCount > 0;
+    const record = await this.db.processedBookingMessage.findUnique({ where: { messageId } });
+    return record !== null;
   }
 
   async markMessageProcessed(messageId: string): Promise<void> {
-    await this.db.query(
-      `
-      INSERT INTO processed_booking_messages (message_id)
-      VALUES ($1)
-      ON CONFLICT (message_id) DO NOTHING
-    `,
-      [messageId]
-    );
+    await this.db.processedBookingMessage.upsert({
+      where: { messageId },
+      update: {},
+      create: { messageId }
+    });
   }
 }
