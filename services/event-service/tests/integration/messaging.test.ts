@@ -99,12 +99,15 @@ function createMessage(eventId = "event-1"): MessageEnvelope<ReserveSeatsPayload
   };
 }
 
+import { InventoryService } from "../../src/modules/inventory/inventory.service";
+
 describe("BookingReservationConsumer", () => {
   it("publishes seats reserved on success", async () => {
     const repo = new FakeRepo(true) as unknown as InventoryRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
-    const consumer = new BookingReservationConsumer(repo, cache, publisher);
+    const service = new InventoryService({ repository: repo, cache, publisher });
+    const consumer = new BookingReservationConsumer(service);
 
     const message = createMessage();
     await consumer.handle(message);
@@ -117,7 +120,8 @@ describe("BookingReservationConsumer", () => {
     const repo = new FakeRepo(false) as unknown as InventoryRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
-    const consumer = new BookingReservationConsumer(repo, cache, publisher);
+    const service = new InventoryService({ repository: repo, cache, publisher });
+    const consumer = new BookingReservationConsumer(service);
 
     await consumer.handle(createMessage());
 
@@ -128,7 +132,8 @@ describe("BookingReservationConsumer", () => {
     const repo = new FakeRepo(true) as unknown as InventoryRepository;
     const cache = new FakeCache();
     const publisher = new FakePublisher();
-    const consumer = new BookingReservationConsumer(repo, cache, publisher);
+    const service = new InventoryService({ repository: repo, cache, publisher });
+    const consumer = new BookingReservationConsumer(service);
 
     const message = createMessage();
     await consumer.handle(message);

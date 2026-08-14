@@ -20,7 +20,51 @@ export class InventoryService {
   async reserveSeats(message: MessageEnvelope<ReserveSeatsPayload>): Promise<void> {
     const { repository, cache, publisher } = this.dependencies;
 
-    if (await repository.hasProcessedMessage(message.messageId)) {
+    const successMessageId = randomUUID();
+    const successMessage: MessageEnvelope<SeatsReservedPayload> = {
+      messageId: successMessageId,
+      correlationId: message.correlationId,
+      timestamp: new Date().toISOString(),
+      version: 1,
+      payload: {
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        quantity: message.payload.quantity
+      }
+    };
+
+    const failedMessageId = randomUUID();
+    const failedMessage: MessageEnvelope<SeatReservationFailedPayload> = {
+      messageId: failedMessageId,
+      correlationId: message.correlationId,
+      timestamp: new Date().toISOString(),
+      version: 1,
+      payload: {
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        reason: "INSUFFICIENT_SEATS"
+      }
+    };
+
+    const result = await repository.processReserveSeatsMessage({
+      messageId: message.messageId,
+      eventId: message.payload.eventId,
+      quantity: message.payload.quantity,
+      outboxOnSuccess: {
+        id: randomUUID(),
+        topic: Topics.SEATS_RESERVED,
+        messageId: successMessageId,
+        message: successMessage
+      },
+      outboxOnFailure: {
+        id: randomUUID(),
+        topic: Topics.SEAT_RESERVATION_FAILED,
+        messageId: failedMessageId,
+        message: failedMessage
+      }
+    });
+
+    if (result.duplicate) {
       this.logger.info(
         {
           messageId: message.messageId,
@@ -32,32 +76,27 @@ export class InventoryService {
       return;
     }
 
-    const reserved = await repository.reserveSeats(message.payload.eventId, message.payload.quantity);
-
-    if (!reserved) {
+    if (!result.reserved) {
       this.logger.warn(
         {
           messageId: message.messageId,
           bookingId: message.payload.bookingId,
           eventId: message.payload.eventId,
-          quantity: message.payload.quantity
+          quantity: message.payload.quantity,
+          reason: result.reason
         },
         "Insufficient seats for booking reservation"
       );
-      const failedMessage: MessageEnvelope<SeatReservationFailedPayload> = {
-        messageId: randomUUID(),
-        correlationId: message.correlationId,
-        timestamp: new Date().toISOString(),
-        version: 1,
-        payload: {
-          bookingId: message.payload.bookingId,
-          eventId: message.payload.eventId,
-          reason: "INSUFFICIENT_SEATS"
-        }
+      const payloadReason = result.reason === "EVENT_NOT_FOUND" ? "EVENT_NOT_FOUND" : "INSUFFICIENT_SEATS";
+      const actualFailedMessage = {
+        ...failedMessage,
+        payload: { ...failedMessage.payload, reason: payloadReason }
       };
 
-      await publisher.publish(Topics.SEAT_RESERVATION_FAILED, failedMessage);
-      await repository.markMessageProcessed(message.messageId);
+      await publisher.publish(Topics.SEAT_RESERVATION_FAILED, actualFailedMessage);
+      if (result.outboxRowId) {
+        await repository.markOutboxPublished(result.outboxRowId);
+      }
       return;
     }
 
@@ -72,20 +111,10 @@ export class InventoryService {
       "Seats reserved and event cache invalidated"
     );
 
-    const successMessage: MessageEnvelope<SeatsReservedPayload> = {
-      messageId: randomUUID(),
-      correlationId: message.correlationId,
-      timestamp: new Date().toISOString(),
-      version: 1,
-      payload: {
-        bookingId: message.payload.bookingId,
-        eventId: message.payload.eventId,
-        quantity: message.payload.quantity
-      }
-    };
-
     await publisher.publish(Topics.SEATS_RESERVED, successMessage);
-    await repository.markMessageProcessed(message.messageId);
+    if (result.outboxRowId) {
+      await repository.markOutboxPublished(result.outboxRowId);
+    }
     this.logger.info(
       {
         messageId: message.messageId,

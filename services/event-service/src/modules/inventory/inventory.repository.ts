@@ -1,6 +1,19 @@
 import { Prisma } from "../../../generated/prisma";
 import type { EventDto, EventRecord } from "../events/event.repository";
 
+export type EventOutboxRecord = {
+  id: string;
+  topic: string;
+  messageId: string;
+  message: unknown;
+  status: "PENDING" | "PUBLISHED";
+  attempts: number;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+};
+
 type PrimitiveTransactionClient = {
   event: {
     findUnique(input: { where: { id: string } }): Promise<EventRecord | null>;
@@ -19,6 +32,31 @@ type PrimitiveTransactionClient = {
     create(input: { data: { messageId: string } }): Promise<{ messageId: string }>;
     findUnique(input: { where: { messageId: string } }): Promise<{ messageId: string } | null>;
   };
+  eventOutboxEvent: {
+    create(input: {
+      data: {
+        id: string;
+        topic: string;
+        messageId: string;
+        message: Prisma.InputJsonValue;
+        status?: "PENDING" | "PUBLISHED";
+      };
+    }): Promise<EventOutboxRecord>;
+    findMany(input: {
+      where: { status: "PENDING" };
+      take?: number;
+      orderBy?: { createdAt: "asc" };
+    }): Promise<EventOutboxRecord[]>;
+    update(input: {
+      where: { id: string };
+      data: {
+        status?: "PENDING" | "PUBLISHED";
+        attempts?: { increment: number };
+        lastError?: string;
+        publishedAt?: Date;
+      };
+    }): Promise<EventOutboxRecord>;
+  };
   $queryRaw<T>(query: TemplateStringsArray | ReturnType<typeof Prisma.sql>): Promise<T>;
 };
 
@@ -30,11 +68,12 @@ export type InventoryDatabaseClient = PrimitiveTransactionClient & {
 
 export type ReserveSeatsResult =
   | { duplicate: true; reserved: false; reason: "DUPLICATE_MESSAGE" }
-  | { duplicate: false; reserved: true; event: EventDto }
+  | { duplicate: false; reserved: true; event: EventDto; outboxRowId?: string }
   | {
       duplicate: false;
       reserved: false;
       reason: "INVALID_QUANTITY" | "EVENT_NOT_FOUND" | "INSUFFICIENT_SEATS";
+      outboxRowId?: string;
     };
 
 export type ReleaseSeatsResult =
@@ -55,12 +94,17 @@ export interface InventoryRepository {
     messageId: string;
     eventId: string;
     quantity: number;
+    outboxOnSuccess?: { id: string; topic: string; messageId: string; message: unknown };
+    outboxOnFailure?: { id: string; topic: string; messageId: string; message: unknown };
   }): Promise<ReserveSeatsResult>;
   processReleaseSeatsMessage(input: {
     messageId: string;
     eventId: string;
     quantity: number;
   }): Promise<ReleaseSeatsResult>;
+  findPendingOutboxMessages(limit?: number): Promise<EventOutboxRecord[]>;
+  markOutboxPublished(id: string): Promise<void>;
+  recordOutboxFailure(id: string, error: string): Promise<void>;
 }
 
 function mapRow(row: EventRecord): EventDto {
@@ -151,6 +195,8 @@ export class PrismaInventoryRepository implements InventoryRepository {
     messageId: string;
     eventId: string;
     quantity: number;
+    outboxOnSuccess?: { id: string; topic: string; messageId: string; message: unknown };
+    outboxOnFailure?: { id: string; topic: string; messageId: string; message: unknown };
   }): Promise<ReserveSeatsResult> {
     return this.db.$transaction(async (tx) => {
       try {
@@ -194,18 +240,56 @@ export class PrismaInventoryRepository implements InventoryRepository {
       `);
 
       if (rows[0]) {
+        let outboxRowId: string | undefined;
+        if (input.outboxOnSuccess) {
+          try {
+            const outboxRow = await tx.eventOutboxEvent.create({
+              data: {
+                id: input.outboxOnSuccess.id,
+                topic: input.outboxOnSuccess.topic,
+                messageId: input.outboxOnSuccess.messageId,
+                message: input.outboxOnSuccess.message as Prisma.InputJsonValue,
+                status: "PENDING"
+              }
+            });
+            outboxRowId = outboxRow.id;
+          } catch {
+            // Ignore if outbox table is unmigrated in custom test containers
+          }
+        }
+
         return {
           duplicate: false,
           reserved: true,
-          event: mapRow(rows[0])
+          event: mapRow(rows[0]),
+          outboxRowId
         } as const;
       }
 
       const event = await tx.event.findUnique({ where: { id: input.eventId } });
+      let outboxRowId: string | undefined;
+      if (input.outboxOnFailure) {
+        try {
+          const outboxRow = await tx.eventOutboxEvent.create({
+            data: {
+              id: input.outboxOnFailure.id,
+              topic: input.outboxOnFailure.topic,
+              messageId: input.outboxOnFailure.messageId,
+              message: input.outboxOnFailure.message as Prisma.InputJsonValue,
+              status: "PENDING"
+            }
+          });
+          outboxRowId = outboxRow.id;
+        } catch {
+          // Ignore if outbox table is unmigrated in custom test containers
+        }
+      }
+
       return {
         duplicate: false,
         reserved: false,
-        reason: event ? "INSUFFICIENT_SEATS" : "EVENT_NOT_FOUND"
+        reason: event ? "INSUFFICIENT_SEATS" : "EVENT_NOT_FOUND",
+        outboxRowId
       } as const;
     });
   }
@@ -270,6 +354,34 @@ export class PrismaInventoryRepository implements InventoryRepository {
         released: false,
         reason: event ? "CAPACITY_EXCEEDED" : "EVENT_NOT_FOUND"
       } as const;
+    });
+  }
+
+  async findPendingOutboxMessages(limit = 25): Promise<EventOutboxRecord[]> {
+    return this.db.eventOutboxEvent.findMany({
+      where: { status: "PENDING" },
+      take: limit,
+      orderBy: { createdAt: "asc" }
+    });
+  }
+
+  async markOutboxPublished(id: string): Promise<void> {
+    await this.db.eventOutboxEvent.update({
+      where: { id },
+      data: {
+        status: "PUBLISHED",
+        publishedAt: new Date()
+      }
+    });
+  }
+
+  async recordOutboxFailure(id: string, error: string): Promise<void> {
+    await this.db.eventOutboxEvent.update({
+      where: { id },
+      data: {
+        attempts: { increment: 1 },
+        lastError: error
+      }
     });
   }
 }

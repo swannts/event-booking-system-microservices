@@ -13,6 +13,7 @@ import { PrismaInventoryRepository } from "./modules/inventory/inventory.reposit
 import { InventoryService } from "./modules/inventory/inventory.service";
 import { BookingReservationConsumer } from "./infrastructure/messaging/consumers/reserve-seats.consumer";
 import { ReleaseSeatsConsumer } from "./infrastructure/messaging/consumers/release-seats.consumer";
+import { EventOutboxDispatcher } from "./modules/events/event-outbox.dispatcher";
 
 async function main() {
   const env = loadEventServiceEnv();
@@ -35,7 +36,10 @@ async function main() {
     cache,
     publisher
   });
-  const consumer = new BookingReservationConsumer(inventoryRepository, cache, publisher);
+  const outboxDispatcher = new EventOutboxDispatcher(inventoryRepository, publisher);
+  outboxDispatcher.start();
+
+  const consumer = new BookingReservationConsumer(inventoryService);
   const releaseConsumer = new ReleaseSeatsConsumer(inventoryService);
   const consumerRunner = new KafkaConsumerRunner(
     {
@@ -71,6 +75,7 @@ async function main() {
   const shutdown = async () => {
     server.close(async () => {
       logger.info("Event service shutting down");
+      outboxDispatcher.stop();
       await consumerRunner.stop();
       await publisher.disconnect();
       await redis.quit();

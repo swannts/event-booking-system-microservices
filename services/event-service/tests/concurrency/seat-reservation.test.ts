@@ -69,6 +69,28 @@ async function createSchema(databaseUrl: string): Promise<void> {
         processed_at TIMESTAMP(3) NOT NULL DEFAULT NOW()
       );
     `);
+    await db.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "OutboxStatus" AS ENUM ('PENDING', 'PUBLISHED');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS event_outbox_events (
+        id UUID PRIMARY KEY,
+        topic TEXT NOT NULL,
+        message_id TEXT NOT NULL UNIQUE,
+        message JSONB NOT NULL,
+        status "OutboxStatus" NOT NULL DEFAULT 'PENDING',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+        published_at TIMESTAMP(3)
+      );
+    `);
+    await db.$executeRawUnsafe(`DELETE FROM event_outbox_events;`);
     await db.$executeRawUnsafe(`DELETE FROM processed_event_messages;`);
     await db.$executeRawUnsafe(`DELETE FROM events;`);
   } finally {

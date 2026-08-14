@@ -35,11 +35,14 @@ function createMessage(overrides: Partial<MessageEnvelope<ReserveSeatsPayload>> 
   };
 }
 
-class FakeRepository implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage"> {
+import { InventoryService } from "../../src/modules/inventory/inventory.service";
+
+class FakeRepository implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage" | "markOutboxPublished"> {
   public hasProcessedMessage = vi.fn();
   public reserveSeats = vi.fn();
   public markMessageProcessed = vi.fn();
   public processReserveSeatsMessage = vi.fn();
+  public markOutboxPublished = vi.fn();
 }
 
 class FakeCache implements Pick<EventCache, "del"> {
@@ -50,11 +53,12 @@ class FakePublisher implements Pick<MessagePublisher, "publish"> {
   public publish = vi.fn();
 }
 
-describe("BookingReservationConsumer", () => {
+describe("BookingReservationConsumer & InventoryService", () => {
   let repository: FakeRepository;
   let cache: FakeCache;
   let publisher: FakePublisher;
   let logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
+  let service: InventoryService;
   let consumer: BookingReservationConsumer;
 
   beforeEach(() => {
@@ -65,15 +69,18 @@ describe("BookingReservationConsumer", () => {
       info: vi.fn(),
       warn: vi.fn()
     };
-    consumer = new BookingReservationConsumer(
-      repository as unknown as InventoryRepository,
-      cache as unknown as EventCache,
-      publisher as unknown as MessagePublisher,
+    service = new InventoryService(
+      {
+        repository: repository as unknown as InventoryRepository,
+        cache: cache as unknown as EventCache,
+        publisher: publisher as unknown as MessagePublisher
+      },
       logger as never
     );
+    consumer = new BookingReservationConsumer(service);
   });
 
-  it("handles a successful seat reservation, invalidates cache, preserves correlation id, and records the message", async () => {
+  it("handles a successful seat reservation, invalidates cache, preserves correlation id, and records outbox message", async () => {
     const message = createMessage({ correlationId: "corr-123" });
     repository.processReserveSeatsMessage.mockResolvedValue({
       duplicate: false,
@@ -86,16 +93,22 @@ describe("BookingReservationConsumer", () => {
         availableSeats: 8,
         createdAt: "2026-08-13T00:00:00.000Z",
         updatedAt: "2026-08-13T00:00:00.000Z"
-      } satisfies EventDto
+      } satisfies EventDto,
+      outboxRowId: "outbox-1"
     });
 
     await consumer.handle(message);
 
-    expect(repository.processReserveSeatsMessage).toHaveBeenCalledWith({
-      messageId: message.messageId,
-      eventId: message.payload.eventId,
-      quantity: message.payload.quantity
-    });
+    expect(repository.processReserveSeatsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: message.messageId,
+        eventId: message.payload.eventId,
+        quantity: message.payload.quantity,
+        outboxOnSuccess: expect.objectContaining({
+          topic: Topics.SEATS_RESERVED
+        })
+      })
+    );
     expect(cache.del).toHaveBeenCalledWith(message.payload.eventId);
     expect(publisher.publish).toHaveBeenCalledWith(
       Topics.SEATS_RESERVED,
@@ -108,6 +121,7 @@ describe("BookingReservationConsumer", () => {
         }
       })
     );
+    expect(repository.markOutboxPublished).toHaveBeenCalledWith("outbox-1");
     expect(logger.info).toHaveBeenCalled();
   });
 
@@ -116,7 +130,8 @@ describe("BookingReservationConsumer", () => {
     repository.processReserveSeatsMessage.mockResolvedValue({
       duplicate: false,
       reserved: false,
-      reason: "INSUFFICIENT_SEATS"
+      reason: "INSUFFICIENT_SEATS",
+      outboxRowId: "outbox-2"
     });
     publisher.publish.mockResolvedValue(undefined);
 
@@ -134,6 +149,7 @@ describe("BookingReservationConsumer", () => {
       })
     );
     expect(cache.del).not.toHaveBeenCalled();
+    expect(repository.markOutboxPublished).toHaveBeenCalledWith("outbox-2");
   });
 
   it("propagates publisher failures during successful reservations", async () => {
