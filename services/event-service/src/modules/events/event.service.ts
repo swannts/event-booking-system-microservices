@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { EventErrors, AppError } from "./event.errors";
 import type { EventCache } from "../../infrastructure/cache/event-cache";
-import type { EventDto, EventRepository } from "./event.repository";
+import type { EventDto, EventRepository } from "./event.types";
 
 export class EventsService {
   constructor(

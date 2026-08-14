@@ -1,107 +1,30 @@
 import { Prisma } from "../../../generated/prisma";
 import type { EventDto, EventRecord } from "../events/event.repository";
+import type {
+  EventOutboxRecord,
+  InventoryDatabaseClient,
+  ProcessReleaseSeatsInput,
+  ProcessReserveSeatsInput,
+  ReleaseSeatsResult,
+  ReserveSeatsResult
+} from "./inventory.types";
 
-export type EventOutboxRecord = {
-  id: string;
-  topic: string;
-  messageId: string;
-  message: unknown;
-  status: "PENDING" | "PUBLISHED";
-  attempts: number;
-  lastError: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  publishedAt: Date | null;
+export type {
+  EventOutboxRecord,
+  InventoryDatabaseClient,
+  ProcessReleaseSeatsInput,
+  ProcessReserveSeatsInput,
+  ReleaseSeatsResult,
+  ReserveSeatsResult
 };
-
-type PrimitiveTransactionClient = {
-  event: {
-    findUnique(input: { where: { id: string } }): Promise<EventRecord | null>;
-    create(input: {
-      data: { id: string; title: string; date: Date; totalSeats: number; availableSeats: number };
-    }): Promise<EventRecord>;
-    updateMany(input: {
-      where: { id: string; availableSeats?: { gte: number } };
-      data: {
-        availableSeats?: { decrement?: number; increment?: number };
-        updatedAt?: Date;
-      };
-    }): Promise<{ count: number }>;
-  };
-  processedEventMessage: {
-    create(input: { data: { messageId: string } }): Promise<{ messageId: string }>;
-    findUnique(input: { where: { messageId: string } }): Promise<{ messageId: string } | null>;
-  };
-  eventOutboxEvent: {
-    create(input: {
-      data: {
-        id: string;
-        topic: string;
-        messageId: string;
-        message: Prisma.InputJsonValue;
-        status?: "PENDING" | "PUBLISHED";
-      };
-    }): Promise<EventOutboxRecord>;
-    findMany(input: {
-      where: { status: "PENDING" };
-      take?: number;
-      orderBy?: { createdAt: "asc" };
-    }): Promise<EventOutboxRecord[]>;
-    update(input: {
-      where: { id: string };
-      data: {
-        status?: "PENDING" | "PUBLISHED";
-        attempts?: { increment: number };
-        lastError?: string;
-        publishedAt?: Date;
-      };
-    }): Promise<EventOutboxRecord>;
-  };
-  $queryRaw<T>(query: TemplateStringsArray | ReturnType<typeof Prisma.sql>): Promise<T>;
-};
-
-export type InventoryDatabaseClient = PrimitiveTransactionClient & {
-  $connect(): Promise<void>;
-  $disconnect(): Promise<void>;
-  $transaction<T>(fn: (tx: PrimitiveTransactionClient) => Promise<T>): Promise<T>;
-};
-
-export type ReserveSeatsResult =
-  | { duplicate: true; reserved: false; reason: "DUPLICATE_MESSAGE" }
-  | { duplicate: false; reserved: true; event: EventDto; outboxRowId?: string }
-  | {
-      duplicate: false;
-      reserved: false;
-      reason: "INVALID_QUANTITY" | "EVENT_NOT_FOUND" | "INSUFFICIENT_SEATS";
-      outboxRowId?: string;
-    };
-
-export type ReleaseSeatsResult =
-  | { duplicate: true; released: false; reason: "DUPLICATE_MESSAGE" }
-  | { duplicate: false; released: true; event: EventDto }
-  | {
-      duplicate: false;
-      released: false;
-      reason: "INVALID_QUANTITY" | "EVENT_NOT_FOUND" | "CAPACITY_EXCEEDED";
-    };
 
 export interface InventoryRepository {
   reserveSeats(eventId: string, quantity: number): Promise<EventDto | null>;
   releaseSeats(eventId: string, quantity: number): Promise<EventDto | null>;
   hasProcessedMessage(messageId: string): Promise<boolean>;
   markMessageProcessed(messageId: string): Promise<void>;
-  processReserveSeatsMessage(input: {
-    messageId: string;
-    eventId: string;
-    quantity: number;
-    outboxOnSuccess?: { id: string; topic: string; messageId: string; message: unknown };
-    outboxOnFailure?: { id: string; topic: string; messageId: string; message: unknown };
-  }): Promise<ReserveSeatsResult>;
-  processReleaseSeatsMessage(input: {
-    messageId: string;
-    eventId: string;
-    quantity: number;
-  }): Promise<ReleaseSeatsResult>;
+  processReserveSeatsMessage(input: ProcessReserveSeatsInput): Promise<ReserveSeatsResult>;
+  processReleaseSeatsMessage(input: ProcessReleaseSeatsInput): Promise<ReleaseSeatsResult>;
   findPendingOutboxMessages(limit?: number): Promise<EventOutboxRecord[]>;
   markOutboxPublished(id: string): Promise<void>;
   recordOutboxFailure(id: string, error: string): Promise<void>;

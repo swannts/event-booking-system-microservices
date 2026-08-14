@@ -1,19 +1,7 @@
 import type { PrismaClient, User as UserModel } from "../../../generated/prisma";
+import type { CreateUserInput, UserDto, UserRepository } from "./user.types";
 
-export interface UserRepository {
-  create(input: { id: string; name: string; email: string }): Promise<UserDto>;
-  findById(id: string): Promise<UserDto | null>;
-  findByEmail(email: string): Promise<UserDto | null>;
-  findAll(): Promise<UserDto[]>;
-}
-
-export type UserDto = {
-  id: string;
-  name: string;
-  email: string;
-  createdAt: string;
-  updatedAt: string;
-};
+export type { CreateUserInput, UserDto, UserRepository };
 
 function mapRow(row: UserModel): UserDto {
   return {

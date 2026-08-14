@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { Prisma } from "../../../generated/prisma";
 import { UserErrors } from "./user.errors";
-import type { UserDto, UserRepository } from "./user.repository";
+import type { UserDto, UserRepository } from "./user.types";
 
 export class UsersService {
   constructor(private readonly repository: UserRepository) {}

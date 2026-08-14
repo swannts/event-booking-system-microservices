@@ -1,60 +1,20 @@
-import type { Event as EventModel } from "../../../generated/prisma";
+import type {
+  CreateEventInput,
+  EventDatabaseClient,
+  EventDto,
+  EventRecord,
+  EventRepository,
+  UpdateEventInput
+} from "./event.types";
 
-export type EventRecord = EventModel;
-
-export type EventDto = {
-  id: string;
-  title: string;
-  date: string;
-  totalSeats: number;
-  availableSeats: number;
-  createdAt: string;
-  updatedAt: string;
+export type {
+  CreateEventInput,
+  EventDatabaseClient,
+  EventDto,
+  EventRecord,
+  EventRepository,
+  UpdateEventInput
 };
-
-export type EventDatabaseClient = {
-  event: {
-    create(input: { data: { id: string; title: string; date: Date; totalSeats: number; availableSeats: number } }): Promise<EventRecord>;
-    findUnique(input: { where: { id: string } }): Promise<EventRecord | null>;
-    findMany(input?: { orderBy?: { createdAt?: "asc" | "desc" } }): Promise<EventRecord[]>;
-    update(input: {
-      where: { id: string };
-      data: {
-        title?: string;
-        date?: Date;
-        totalSeats?: number;
-        availableSeats?: number;
-      };
-    }): Promise<EventRecord>;
-    deleteMany(input: { where: { id: string } }): Promise<{ count: number }>;
-    updateMany(input: {
-      where: { id: string; availableSeats?: { gte: number } };
-      data: {
-        availableSeats?: { decrement?: number; increment?: number };
-        updatedAt?: Date;
-      };
-    }): Promise<{ count: number }>;
-  };
-  $connect(): Promise<void>;
-  $disconnect(): Promise<void>;
-};
-
-export interface EventRepository {
-  create(input: {
-    id: string;
-    title: string;
-    date: string;
-    totalSeats: number;
-    availableSeats?: number;
-  }): Promise<EventDto>;
-  findById(id: string): Promise<EventDto | null>;
-  list(): Promise<EventDto[]>;
-  update(
-    id: string,
-    input: { title: string; date: string; totalSeats: number }
-  ): Promise<EventDto | null>;
-  delete(id: string): Promise<boolean>;
-}
 
 function mapRow(row: EventRecord): EventDto {
   return {
