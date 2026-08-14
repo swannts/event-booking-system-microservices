@@ -190,15 +190,29 @@ export class PrismaInventoryRepository implements InventoryRepository {
       }
 
       const event = await tx.event.findUnique({ where: { id: input.eventId } });
+      const failureReason = event ? "INSUFFICIENT_SEATS" : "EVENT_NOT_FOUND";
       let outboxRowId: string | undefined;
+
       if (input.outboxOnFailure) {
         try {
+          const rawMessage = input.outboxOnFailure.message;
+          const outboxMessage =
+            typeof rawMessage === "object" && rawMessage !== null
+              ? {
+                  ...rawMessage,
+                  payload: {
+                    ...(rawMessage as { payload?: Record<string, unknown> }).payload,
+                    reason: failureReason
+                  }
+                }
+              : rawMessage;
+
           const outboxRow = await tx.eventOutboxEvent.create({
             data: {
               id: input.outboxOnFailure.id,
               topic: input.outboxOnFailure.topic,
               messageId: input.outboxOnFailure.messageId,
-              message: input.outboxOnFailure.message as Prisma.InputJsonValue,
+              message: outboxMessage as Prisma.InputJsonValue,
               status: "PENDING"
             }
           });
@@ -211,7 +225,7 @@ export class PrismaInventoryRepository implements InventoryRepository {
       return {
         duplicate: false,
         reserved: false,
-        reason: event ? "INSUFFICIENT_SEATS" : "EVENT_NOT_FOUND",
+        reason: failureReason,
         outboxRowId
       } as const;
     });
