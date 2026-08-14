@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "event-booking.componentFullname" (dict "root" . "component" "booking-service") }}
+  namespace: {{ include "event-booking.namespace" . }}
+  labels:
+    {{- include "event-booking.labels" . | nindent 4 }}
+    app.kubernetes.io/component: booking-service
+spec:
+  replicas: {{ .Values.bookingService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "event-booking.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: booking-service
+  template:
+    metadata:
+      labels:
+        {{- include "event-booking.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: booking-service
+    spec:
+      initContainers:
+        - name: wait-for-booking-db
+          image: "{{ .Values.images.postgres.repository }}:{{ .Values.images.postgres.tag }}"
+          imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
+          command:
+            - sh
+            - -ec
+            - until pg_isready -h {{ include "event-booking.componentFqdn" (dict "root" . "component" "booking-db") }} -p {{ int .Values.bookingDb.service.port }} -U {{ .Values.databases.postgres.username }} -d {{ .Values.databases.postgres.database }}; do echo waiting for booking-db; sleep 2; done
+        - name: wait-for-kafka
+          image: "{{ .Values.images.kafka.repository }}:{{ .Values.images.kafka.tag }}"
+          imagePullPolicy: {{ .Values.images.kafka.pullPolicy }}
+          command:
+            - sh
+            - -ec
+            - until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server {{ include "event-booking.componentFqdn" (dict "root" . "component" "kafka") }}:{{ int .Values.kafka.service.port }} >/dev/null 2>&1; do echo waiting for kafka; sleep 2; done
+      containers:
+        - name: booking-service
+          image: "{{ .Values.images.bookingService.repository }}:{{ .Values.images.bookingService.tag }}"
+          imagePullPolicy: {{ .Values.images.bookingService.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.bookingService.port }}
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NODE_ENV
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: BOOKING_PORT
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-secret
+                  key: BOOKING_DATABASE_URL
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: KAFKA_BROKERS
+            - name: KAFKA_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: BOOKING_KAFKA_CLIENT_ID
+            - name: KAFKA_GROUP_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: BOOKING_KAFKA_GROUP_ID
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: LOG_LEVEL
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: {{ .Values.bookingService.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.bookingService.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.bookingService.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.bookingService.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: {{ .Values.bookingService.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.bookingService.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.bookingService.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.bookingService.probes.liveness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.bookingService.resources | nindent 12 }}

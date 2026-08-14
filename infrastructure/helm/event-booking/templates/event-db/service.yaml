@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "event-booking.componentFullname" (dict "root" . "component" "event-db") }}
+  namespace: {{ include "event-booking.namespace" . }}
+  labels:
+    {{- include "event-booking.labels" . | nindent 4 }}
+    app.kubernetes.io/component: event-db
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "event-booking.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: event-db
+  ports:
+    - name: postgres
+      port: {{ .Values.eventDb.service.port }}
+      targetPort: postgres
+

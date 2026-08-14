@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "event-booking.componentFullname" (dict "root" . "component" "booking-db") }}
+  namespace: {{ include "event-booking.namespace" . }}
+  labels:
+    {{- include "event-booking.labels" . | nindent 4 }}
+    app.kubernetes.io/component: booking-db
+spec:
+  serviceName: {{ include "event-booking.componentFullname" (dict "root" . "component" "booking-db") }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "event-booking.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: booking-db
+  template:
+    metadata:
+      labels:
+        {{- include "event-booking.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: booking-db
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.images.postgres.repository }}:{{ .Values.images.postgres.tag }}"
+          imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.bookingDb.service.port }}
+          envFrom:
+            - secretRef:
+                name: {{ include "event-booking.fullname" . }}-secret
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.bookingDb.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          {{- toYaml .Values.bookingDb.accessModes | nindent 10 }}
+        {{- if .Values.bookingDb.storageClassName }}
+        storageClassName: {{ .Values.bookingDb.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.bookingDb.size | quote }}
+

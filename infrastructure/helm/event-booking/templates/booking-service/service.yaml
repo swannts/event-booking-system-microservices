@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "event-booking.componentFullname" (dict "root" . "component" "booking-service") }}
+  namespace: {{ include "event-booking.namespace" . }}
+  labels:
+    {{- include "event-booking.labels" . | nindent 4 }}
+    app.kubernetes.io/component: booking-service
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "event-booking.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: booking-service
+  ports:
+    - name: http
+      port: {{ .Values.bookingService.port }}
+      targetPort: http
+

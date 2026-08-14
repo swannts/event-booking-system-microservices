@@ -1,0 +1,307 @@
+{
+  "info": {
+    "_postman_id": "a9b1c2d3-e4f5-6789-0123-456789abcdef",
+    "name": "Event Booking System Microservices API",
+    "description": "Complete Postman collection for testing User, Event, Booking, and Notification services in the Event Booking System.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "user_service_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "event_service_url",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "booking_service_url",
+      "value": "http://localhost:3002",
+      "type": "string"
+    },
+    {
+      "key": "notification_service_url",
+      "value": "http://localhost:3003",
+      "type": "string"
+    },
+    {
+      "key": "created_user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "created_event_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "created_booking_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "User Service",
+      "item": [
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice Johnson\",\n  \"email\": \"alice@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{user_service_url}}/users",
+              "host": ["{{user_service_url}}"],
+              "path": ["users"]
+            },
+            "description": "Create a new user with name and unique email address."
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_service_url}}/users/{{created_user_id}}",
+              "host": ["{{user_service_url}}"],
+              "path": ["users", "{{created_user_id}}"]
+            },
+            "description": "Fetch user details by User ID."
+          }
+        },
+        {
+          "name": "List All Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_service_url}}/users",
+              "host": ["{{user_service_url}}"],
+              "path": ["users"]
+            },
+            "description": "Fetch all registered users."
+          }
+        },
+        {
+          "name": "User Service Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_service_url}}/health/ready",
+              "host": ["{{user_service_url}}"],
+              "path": ["health", "ready"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Event Service",
+      "item": [
+        {
+          "name": "Create Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Tech Summit 2026\",\n  \"totalSeats\": 100,\n  \"date\": \"2026-10-15T09:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{event_service_url}}/events",
+              "host": ["{{event_service_url}}"],
+              "path": ["events"]
+            },
+            "description": "Create a new event with total seat inventory."
+          }
+        },
+        {
+          "name": "Get Event by ID (Cached)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{event_service_url}}/events/{{created_event_id}}",
+              "host": ["{{event_service_url}}"],
+              "path": ["events", "{{created_event_id}}"]
+            },
+            "description": "Get event details. Cached in Redis on sub-sequent calls."
+          }
+        },
+        {
+          "name": "List All Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{event_service_url}}/events",
+              "host": ["{{event_service_url}}"],
+              "path": ["events"]
+            },
+            "description": "List all events."
+          }
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Tech Summit 2026\",\n  \"totalSeats\": 150,\n  \"date\": \"2026-10-16T10:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{event_service_url}}/events/{{created_event_id}}",
+              "host": ["{{event_service_url}}"],
+              "path": ["events", "{{created_event_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Event",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{event_service_url}}/events/{{created_event_id}}",
+              "host": ["{{event_service_url}}"],
+              "path": ["events", "{{created_event_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Event Service Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{event_service_url}}/health/ready",
+              "host": ["{{event_service_url}}"],
+              "path": ["health", "ready"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Booking Service",
+      "item": [
+        {
+          "name": "Book Seats",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "idem-key-1001"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{created_user_id}}\",\n  \"eventId\": \"{{created_event_id}}\",\n  \"quantity\": 2\n}"
+            },
+            "url": {
+              "raw": "{{booking_service_url}}/bookings",
+              "host": ["{{booking_service_url}}"],
+              "path": ["bookings"]
+            },
+            "description": "Create a booking request. Emits seat reservation message to Kafka."
+          }
+        },
+        {
+          "name": "Get Booking by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{booking_service_url}}/bookings/{{created_booking_id}}",
+              "host": ["{{booking_service_url}}"],
+              "path": ["bookings", "{{created_booking_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{booking_service_url}}/bookings/{{created_booking_id}}/cancel",
+              "host": ["{{booking_service_url}}"],
+              "path": ["bookings", "{{created_booking_id}}", "cancel"]
+            }
+          }
+        },
+        {
+          "name": "Booking Service Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{booking_service_url}}/health/ready",
+              "host": ["{{booking_service_url}}"],
+              "path": ["health", "ready"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notification Service",
+      "item": [
+        {
+          "name": "Get Received Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notification_service_url}}/notifications",
+              "host": ["{{notification_service_url}}"],
+              "path": ["notifications"]
+            },
+            "description": "Fetch all booking confirmation notifications logged by the consumer."
+          }
+        },
+        {
+          "name": "Notification Service Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notification_service_url}}/health/ready",
+              "host": ["{{notification_service_url}}"],
+              "path": ["health", "ready"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

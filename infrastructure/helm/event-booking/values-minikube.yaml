@@ -1,0 +1,96 @@
+images:
+  userService:
+    repository: event-booking/user-service
+    tag: local
+    pullPolicy: Never
+  eventService:
+    repository: event-booking/event-service
+    tag: local
+    pullPolicy: Never
+  bookingService:
+    repository: event-booking/booking-service
+    tag: local
+    pullPolicy: Never
+  notificationService:
+    repository: event-booking/notification-service
+    tag: local
+    pullPolicy: Never
+
+userService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+eventService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 75m
+      memory: 192Mi
+    limits:
+      cpu: 300m
+      memory: 384Mi
+
+bookingService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 75m
+      memory: 192Mi
+    limits:
+      cpu: 300m
+      memory: 384Mi
+
+notificationService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 150m
+      memory: 192Mi
+
+eventDb:
+  size: 1Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      cpu: 250m
+      memory: 384Mi
+
+bookingDb:
+  size: 1Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      cpu: 250m
+      memory: 384Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+kafka:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+

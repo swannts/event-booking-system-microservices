@@ -1,4 +1,4 @@
-import type { PrismaClient, User as UserModel } from "@prisma/client";
+import type { PrismaClient, User as UserModel } from "../../../generated/prisma";
 
 export interface UserRepository {
   create(input: { id: string; name: string; email: string }): Promise<UserDto>;

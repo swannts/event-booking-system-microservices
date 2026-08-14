@@ -83,7 +83,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: file:/app/services/user-service/dev.db
+      DATABASE_URL: postgresql://postgres:postgres@user-db:5432/event_booking
       LOG_LEVEL: info
     ports:
       - "3000:3000"

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: event-booking
+description: Event booking system assessment chart for Minikube
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

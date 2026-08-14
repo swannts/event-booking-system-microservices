@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "event-booking.fullname" . }}-config
+  namespace: {{ include "event-booking.namespace" . }}
+  labels:
+    {{- include "event-booking.labels" . | nindent 4 }}
+data:
+  NODE_ENV: {{ .Values.global.nodeEnv | quote }}
+  LOG_LEVEL: {{ .Values.global.logLevel | quote }}
+  EVENT_CACHE_TTL_SECONDS: {{ .Values.eventService.cacheTtlSeconds | quote }}
+  USER_PORT: {{ .Values.userService.port | quote }}
+  EVENT_PORT: {{ .Values.eventService.port | quote }}
+  BOOKING_PORT: {{ .Values.bookingService.port | quote }}
+  NOTIFICATION_PORT: {{ .Values.notificationService.port | quote }}
+  REDIS_URL: {{ printf "redis://%s:%d" (include "event-booking.componentFqdn" (dict "root" . "component" "redis")) (int .Values.redis.port) | quote }}
+  KAFKA_BROKERS: {{ printf "%s:%d" (include "event-booking.componentFqdn" (dict "root" . "component" "kafka")) (int .Values.kafka.service.port) | quote }}
+  EVENT_KAFKA_CLIENT_ID: {{ .Values.kafka.clientIds.eventService | quote }}
+  EVENT_KAFKA_GROUP_ID: {{ .Values.kafka.groupIds.eventService | quote }}
+  BOOKING_KAFKA_CLIENT_ID: {{ .Values.kafka.clientIds.bookingService | quote }}
+  BOOKING_KAFKA_GROUP_ID: {{ .Values.kafka.groupIds.bookingService | quote }}
+  NOTIFICATION_KAFKA_CLIENT_ID: {{ .Values.kafka.clientIds.notificationService | quote }}
+  NOTIFICATION_KAFKA_GROUP_ID: {{ .Values.kafka.groupIds.notificationService | quote }}

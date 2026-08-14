@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "event-booking.componentFullname" (dict "root" . "component" "notification-service") }}
+  namespace: {{ include "event-booking.namespace" . }}
+  labels:
+    {{- include "event-booking.labels" . | nindent 4 }}
+    app.kubernetes.io/component: notification-service
+spec:
+  replicas: {{ .Values.notificationService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "event-booking.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: notification-service
+  template:
+    metadata:
+      labels:
+        {{- include "event-booking.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: notification-service
+    spec:
+      initContainers:
+        - name: wait-for-kafka
+          image: "{{ .Values.images.kafka.repository }}:{{ .Values.images.kafka.tag }}"
+          imagePullPolicy: {{ .Values.images.kafka.pullPolicy }}
+          command:
+            - sh
+            - -ec
+            - until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server {{ include "event-booking.componentFqdn" (dict "root" . "component" "kafka") }}:{{ int .Values.kafka.service.port }} >/dev/null 2>&1; do echo waiting for kafka; sleep 2; done
+      containers:
+        - name: notification-service
+          image: "{{ .Values.images.notificationService.repository }}:{{ .Values.images.notificationService.tag }}"
+          imagePullPolicy: {{ .Values.images.notificationService.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.notificationService.port }}
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NODE_ENV
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NOTIFICATION_PORT
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: KAFKA_BROKERS
+            - name: KAFKA_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NOTIFICATION_KAFKA_CLIENT_ID
+            - name: KAFKA_GROUP_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NOTIFICATION_KAFKA_GROUP_ID
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: LOG_LEVEL
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: {{ .Values.notificationService.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.notificationService.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.notificationService.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.notificationService.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: {{ .Values.notificationService.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.notificationService.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.notificationService.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.notificationService.probes.liveness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.notificationService.resources | nindent 12 }}
