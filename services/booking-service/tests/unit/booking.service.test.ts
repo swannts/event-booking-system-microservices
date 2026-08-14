@@ -97,6 +97,33 @@ class FakeBookingDatabase implements BookingDatabaseClient {
       };
       this.bookings.set(where.id, updated);
       return updated;
+    },
+    updateMany: async ({
+      where,
+      data
+    }: {
+      where: Partial<{ id: string; status: BookingStatus; eventId: string; quantity: number }>;
+      data: Partial<{ status: BookingStatus; updatedAt: Date }>;
+    }) => {
+      const row = [...this.bookings.values()].find((entry) => {
+        if (where.id && entry.id !== where.id) return false;
+        if (where.status && entry.status !== where.status) return false;
+        if (where.eventId && entry.eventId !== where.eventId) return false;
+        if (where.quantity !== undefined && entry.quantity !== where.quantity) return false;
+        return true;
+      });
+
+      if (!row) {
+        return { count: 0 };
+      }
+
+      const updated: BookingRow = {
+        ...row,
+        ...data,
+        updatedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.bookings.set(row.id, updated);
+      return { count: 1 };
     }
   };
 
@@ -225,6 +252,20 @@ class FakeBookingDatabase implements BookingDatabaseClient {
   public readonly processedBookingMessage = {
     findUnique: async ({ where }: { where: { messageId: string } }) => {
       return this.processedMessages.get(where.messageId) ?? null;
+    },
+    create: async ({ data }: { data: { messageId: string } }) => {
+      if (this.processedMessages.has(data.messageId)) {
+        const error = new Error("Unique constraint failed");
+        (error as { code?: string }).code = "P2002";
+        throw error;
+      }
+
+      const row: ProcessedMessageRow = {
+        messageId: data.messageId,
+        processedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.processedMessages.set(data.messageId, row);
+      return row;
     },
     upsert: async ({
       where,

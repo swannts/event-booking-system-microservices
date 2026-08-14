@@ -9,6 +9,8 @@ data:
   NODE_ENV: {{ .Values.global.nodeEnv | quote }}
   LOG_LEVEL: {{ .Values.global.logLevel | quote }}
   EVENT_CACHE_TTL_SECONDS: {{ .Values.eventService.cacheTtlSeconds | quote }}
+  RATE_LIMIT_WINDOW_SECONDS: {{ .Values.eventService.rateLimitWindowSeconds | quote }}
+  RATE_LIMIT_MAX_REQUESTS: {{ .Values.eventService.rateLimitMaxRequests | quote }}
   USER_PORT: {{ .Values.userService.port | quote }}
   EVENT_PORT: {{ .Values.eventService.port | quote }}
   BOOKING_PORT: {{ .Values.bookingService.port | quote }}

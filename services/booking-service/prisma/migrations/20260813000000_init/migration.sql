@@ -27,7 +27,7 @@ CREATE TABLE "booking_idempotency_keys" (
 CREATE UNIQUE INDEX "booking_idempotency_keys_booking_id_key" ON "booking_idempotency_keys"("booking_id");
 
 CREATE TABLE "processed_booking_messages" (
-  "message_id" UUID NOT NULL,
+  "message_id" TEXT NOT NULL,
   "processed_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   CONSTRAINT "processed_booking_messages_pkey" PRIMARY KEY ("message_id")

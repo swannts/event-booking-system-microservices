@@ -90,6 +90,8 @@ services:
     depends_on:
       user-db:
         condition: service_healthy
+      user-service-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -100,6 +102,24 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  user-service-migrate:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@user-db:5432/event_booking
+    depends_on:
+      user-db:
+        condition: service_healthy
+    command:
+      [
+        "sh",
+        "-lc",
+        "corepack pnpm --dir services/user-service exec prisma migrate deploy"
+      ]
+    restart: "no"
 
   event-service:
     build:
@@ -124,6 +144,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      event-service-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -134,6 +156,24 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  event-service-migrate:
+    build:
+      context: .
+      dockerfile: services/event-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@event-db:5432/event_booking
+    depends_on:
+      event-db:
+        condition: service_healthy
+    command:
+      [
+        "sh",
+        "-lc",
+        "corepack pnpm --dir services/event-service exec prisma migrate deploy"
+      ]
+    restart: "no"
 
   booking-service:
     build:
@@ -154,6 +194,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      booking-service-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -164,6 +206,24 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  booking-service-migrate:
+    build:
+      context: .
+      dockerfile: services/booking-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@booking-db:5432/event_booking
+    depends_on:
+      booking-db:
+        condition: service_healthy
+    command:
+      [
+        "sh",
+        "-lc",
+        "corepack pnpm --dir services/booking-service exec prisma migrate deploy"
+      ]
+    restart: "no"
 
   notification-service:
     build:

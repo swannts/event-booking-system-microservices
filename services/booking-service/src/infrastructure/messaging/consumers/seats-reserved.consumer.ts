@@ -8,18 +8,42 @@ import {
   type SeatsReservedPayload
 } from "@event-booking/contracts";
 import { createLogger, type AppLogger } from "@event-booking/logger";
-import type { MessagePublisher } from "../message-publisher";
+import type { BookingOutboxDispatcher } from "../../../modules/bookings/booking-outbox.dispatcher";
 import type { BookingRepository } from "../../../modules/bookings/booking.repository";
 
 export class BookingEventsConsumer {
   constructor(
     private readonly repository: BookingRepository,
-    private readonly publisher: MessagePublisher,
+    private readonly outboxDispatcher: BookingOutboxDispatcher,
     private readonly logger: AppLogger = createLogger("booking-service")
   ) {}
 
   async handleSeatsReserved(message: MessageEnvelope<SeatsReservedPayload>): Promise<void> {
-    if (await this.repository.hasProcessedMessage(message.messageId)) {
+    const confirmedMessage: MessageEnvelope<BookingConfirmedPayload> = {
+      messageId: randomUUID(),
+      correlationId: message.correlationId,
+      timestamp: new Date().toISOString(),
+      version: 1,
+      payload: {
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        quantity: message.payload.quantity
+      }
+    };
+
+    const result = await this.repository.processSeatsReservedMessage({
+      messageId: message.messageId,
+      bookingId: message.payload.bookingId,
+      eventId: message.payload.eventId,
+      quantity: message.payload.quantity,
+      outboxOnSuccess: {
+        id: randomUUID(),
+        topic: Topics.BOOKING_CONFIRMED,
+        message: confirmedMessage
+      }
+    });
+
+    if (result.duplicate) {
       this.logger.info(
         {
           messageId: message.messageId,
@@ -31,45 +55,56 @@ export class BookingEventsConsumer {
       return;
     }
 
-    const booking = await this.repository.updateStatus(message.payload.bookingId, "CONFIRMED");
-    if (!booking) {
+    if (!result.confirmed) {
       this.logger.warn(
         {
           messageId: message.messageId,
           bookingId: message.payload.bookingId,
-          eventId: message.payload.eventId
+          eventId: message.payload.eventId,
+          reason: result.reason
         },
-        "Unable to confirm booking because the booking was not found"
+        "Unable to confirm booking"
       );
       return;
     }
 
-    const confirmedMessage: MessageEnvelope<{ bookingId: string; eventId: string; quantity: number }> = {
+    await this.outboxDispatcher.dispatchPending();
+    this.logger.info(
+      {
+        messageId: message.messageId,
+        bookingId: result.booking.id,
+        eventId: result.booking.eventId
+      },
+      "Booking confirmed message queued"
+    );
+  }
+
+  async handleSeatReservationFailed(message: MessageEnvelope<SeatReservationFailedPayload>): Promise<void> {
+    const failedMessage: MessageEnvelope<BookingFailedPayload> = {
       messageId: randomUUID(),
       correlationId: message.correlationId,
       timestamp: new Date().toISOString(),
       version: 1,
       payload: {
-        bookingId: booking.id,
-        eventId: booking.eventId,
-        quantity: booking.quantity
+        bookingId: message.payload.bookingId,
+        eventId: message.payload.eventId,
+        reason: message.payload.reason
       }
     };
 
-    await this.publisher.publish(Topics.BOOKING_CONFIRMED, confirmedMessage);
-    await this.repository.markMessageProcessed(message.messageId);
-    this.logger.info(
-      {
-        messageId: message.messageId,
-        bookingId: booking.id,
-        eventId: booking.eventId
-      },
-      "Booking confirmed message published"
-    );
-  }
+    const result = await this.repository.processSeatReservationFailedMessage({
+      messageId: message.messageId,
+      bookingId: message.payload.bookingId,
+      eventId: message.payload.eventId,
+      reason: message.payload.reason,
+      outboxOnFailure: {
+        id: randomUUID(),
+        topic: Topics.BOOKING_FAILED,
+        message: failedMessage
+      }
+    });
 
-  async handleSeatReservationFailed(message: MessageEnvelope<SeatReservationFailedPayload>): Promise<void> {
-    if (await this.repository.hasProcessedMessage(message.messageId)) {
+    if (result.duplicate) {
       this.logger.info(
         {
           messageId: message.messageId,
@@ -81,41 +116,28 @@ export class BookingEventsConsumer {
       return;
     }
 
-    const booking = await this.repository.updateStatus(message.payload.bookingId, "FAILED");
-    if (!booking) {
+    if (!result.failed) {
       this.logger.warn(
         {
           messageId: message.messageId,
           bookingId: message.payload.bookingId,
-          eventId: message.payload.eventId
+          eventId: message.payload.eventId,
+          reason: result.reason
         },
-        "Unable to fail booking because the booking was not found"
+        "Unable to fail booking"
       );
       return;
     }
 
-    const failedMessage: MessageEnvelope<BookingFailedPayload> = {
-      messageId: randomUUID(),
-      correlationId: message.correlationId,
-      timestamp: new Date().toISOString(),
-      version: 1,
-      payload: {
-        bookingId: booking.id,
-        eventId: booking.eventId,
-        reason: message.payload.reason
-      }
-    };
-
-    await this.publisher.publish(Topics.BOOKING_FAILED, failedMessage);
-    await this.repository.markMessageProcessed(message.messageId);
+    await this.outboxDispatcher.dispatchPending();
     this.logger.warn(
       {
         messageId: message.messageId,
-        bookingId: booking.id,
-        eventId: booking.eventId,
+        bookingId: result.booking.id,
+        eventId: result.booking.eventId,
         reason: message.payload.reason
       },
-      "Booking failed message published"
+      "Booking failed message queued"
     );
   }
 }

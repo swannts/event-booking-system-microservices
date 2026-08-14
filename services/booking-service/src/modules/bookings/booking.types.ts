@@ -41,6 +41,34 @@ export type BookingOutboxRecord = {
   publishedAt: string | null;
 };
 
+export type BookingProcessingFailureReason =
+  | "BOOKING_NOT_FOUND"
+  | "EVENT_MISMATCH"
+  | "QUANTITY_MISMATCH"
+  | "INVALID_STATUS";
+
+export type ProcessSeatsReservedResult =
+  | { duplicate: true; confirmed: false; reason: "DUPLICATE_MESSAGE" }
+  | { duplicate: false; confirmed: true; booking: BookingDto; outboxRowId: string }
+  | {
+      duplicate: false;
+      confirmed: false;
+      reason: BookingProcessingFailureReason;
+    };
+
+export type ProcessSeatReservationFailedResult =
+  | { duplicate: true; failed: false; reason: "DUPLICATE_MESSAGE" }
+  | { duplicate: false; failed: true; booking: BookingDto; outboxRowId: string }
+  | {
+      duplicate: false;
+      failed: false;
+      reason: BookingProcessingFailureReason;
+    };
+
+export type CancelBookingResult =
+  | { cancelled: true; booking: BookingDto; outboxRowId: string }
+  | { cancelled: false; reason: "BOOKING_NOT_FOUND" | "INVALID_STATUS" };
+
 export type BookingTransactionalClient = {
   booking: {
     create(input: {
@@ -58,6 +86,18 @@ export type BookingTransactionalClient = {
       where?: { userId?: string };
       orderBy?: { createdAt?: "asc" | "desc" };
     }): Promise<BookingRecord[]>;
+    updateMany(input: {
+      where: Partial<{
+        id: string;
+        status: BookingStatus;
+        eventId: string;
+        quantity: number;
+      }>;
+      data: Partial<{
+        status: BookingStatus;
+        updatedAt: Date;
+      }>;
+    }): Promise<{ count: number }>;
     update(input: {
       where: { id: string };
       data: Partial<{
@@ -108,6 +148,12 @@ export type BookingTransactionalClient = {
       messageId: string;
       processedAt: Date;
     } | null>;
+    create(input: {
+      data: { messageId: string };
+    }): Promise<{
+      messageId: string;
+      processedAt: Date;
+    }>;
     upsert(input: {
       where: { messageId: string };
       update: Record<string, never>;
@@ -179,6 +225,28 @@ export interface BookingRepository {
   findByUserId(userId: string): Promise<BookingDto[]>;
   findByIdempotencyKey(key: string): Promise<BookingDto | null>;
   updateStatus(id: string, status: BookingStatus): Promise<BookingDto | null>;
+  processSeatsReservedMessage(input: {
+    messageId: string;
+    bookingId: string;
+    eventId: string;
+    quantity: number;
+    outboxOnSuccess: {
+      id: string;
+      topic: Topic;
+      message: MessageEnvelope<unknown>;
+    };
+  }): Promise<ProcessSeatsReservedResult>;
+  processSeatReservationFailedMessage(input: {
+    messageId: string;
+    bookingId: string;
+    eventId: string;
+    reason: "INSUFFICIENT_SEATS" | "EVENT_NOT_FOUND";
+    outboxOnFailure: {
+      id: string;
+      topic: Topic;
+      message: MessageEnvelope<unknown>;
+    };
+  }): Promise<ProcessSeatReservationFailedResult>;
   cancelBookingWithOutbox(input: {
     id: string;
     outbox: {
@@ -186,7 +254,7 @@ export interface BookingRepository {
       topic: Topic;
       message: MessageEnvelope<unknown>;
     };
-  }): Promise<BookingDto | null>;
+  }): Promise<CancelBookingResult>;
   storeIdempotencyKey(input: {
     key: string;
     bookingId: string;

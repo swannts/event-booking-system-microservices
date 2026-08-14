@@ -9,7 +9,7 @@ import { createUserRouter } from "./modules/users/user.routes";
 import { UsersService } from "./modules/users/user.service";
 import { PrismaUserRepository } from "./modules/users/user.repository";
 import { UserController } from "./modules/users/user.controller";
-import { ensureUsersTable, type UserDatabase } from "./config/database";
+import type { UserDatabase } from "./config/database";
 import { notFoundHandler } from "./middleware/not-found";
 
 export type UserServiceDependencies = {
@@ -17,8 +17,6 @@ export type UserServiceDependencies = {
 };
 
 export async function createUserApp({ db }: UserServiceDependencies): Promise<Express> {
-  await ensureUsersTable(db);
-
   const app = express();
   const repository = new PrismaUserRepository(db);
   const service = new UsersService(repository);

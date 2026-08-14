@@ -159,20 +159,16 @@ export class PrismaInventoryRepository implements InventoryRepository {
       if (rows[0]) {
         let outboxRowId: string | undefined;
         if (input.outboxOnSuccess) {
-          try {
-            const outboxRow = await tx.eventOutboxEvent.create({
-              data: {
-                id: input.outboxOnSuccess.id,
-                topic: input.outboxOnSuccess.topic,
-                messageId: input.outboxOnSuccess.messageId,
-                message: input.outboxOnSuccess.message as Prisma.InputJsonValue,
-                status: "PENDING"
-              }
-            });
-            outboxRowId = outboxRow.id;
-          } catch {
-            // Ignore if outbox table is unmigrated in custom test containers
-          }
+          const outboxRow = await tx.eventOutboxEvent.create({
+            data: {
+              id: input.outboxOnSuccess.id,
+              topic: input.outboxOnSuccess.topic,
+              messageId: input.outboxOnSuccess.messageId,
+              message: input.outboxOnSuccess.message as Prisma.InputJsonValue,
+              status: "PENDING"
+            }
+          });
+          outboxRowId = outboxRow.id;
         }
 
         return {
@@ -188,32 +184,28 @@ export class PrismaInventoryRepository implements InventoryRepository {
       let outboxRowId: string | undefined;
 
       if (input.outboxOnFailure) {
-        try {
-          const outboxMessage = {
-            messageId: input.outboxOnFailure.messageId,
-            correlationId: input.outboxOnFailure.correlationId,
-            timestamp: new Date().toISOString(),
-            version: 1,
-            payload: {
-              bookingId: input.outboxOnFailure.bookingId,
-              eventId: input.eventId,
-              reason: failureReason
-            }
-          };
+        const outboxMessage = {
+          messageId: input.outboxOnFailure.messageId,
+          correlationId: input.outboxOnFailure.correlationId,
+          timestamp: new Date().toISOString(),
+          version: 1,
+          payload: {
+            bookingId: input.outboxOnFailure.bookingId,
+            eventId: input.eventId,
+            reason: failureReason
+          }
+        };
 
-          const outboxRow = await tx.eventOutboxEvent.create({
-            data: {
-              id: input.outboxOnFailure.id,
-              topic: input.outboxOnFailure.topic,
-              messageId: input.outboxOnFailure.messageId,
-              message: outboxMessage as Prisma.InputJsonValue,
-              status: "PENDING"
-            }
-          });
-          outboxRowId = outboxRow.id;
-        } catch {
-          // Ignore if outbox table is unmigrated in custom test containers
-        }
+        const outboxRow = await tx.eventOutboxEvent.create({
+          data: {
+            id: input.outboxOnFailure.id,
+            topic: input.outboxOnFailure.topic,
+            messageId: input.outboxOnFailure.messageId,
+            message: outboxMessage as Prisma.InputJsonValue,
+            status: "PENDING"
+          }
+        });
+        outboxRowId = outboxRow.id;
       }
 
       return {

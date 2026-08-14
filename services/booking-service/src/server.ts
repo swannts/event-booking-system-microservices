@@ -26,7 +26,7 @@ async function main() {
   const messaging = createBookingMessaging({
     kafkaConfig,
     repository,
-    publisher
+    outboxDispatcher
   });
 
   await messaging.start();

@@ -63,6 +63,8 @@ eventService:
   replicaCount: 1
   port: 3001
   cacheTtlSeconds: 120
+  rateLimitWindowSeconds: 60
+  rateLimitMaxRequests: 100
   resources:
     requests:
       cpu: 100m

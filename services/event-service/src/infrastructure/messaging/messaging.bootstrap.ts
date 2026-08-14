@@ -29,7 +29,7 @@ export function createEventMessaging(dependencies: {
         handler: (message) => reserveConsumer.handle(message as never)
       },
       {
-        topic: Topics.RELEASE_SEATS,
+        topic: Topics.BOOKING_CANCELLED,
         handler: (message) => releaseConsumer.handle(message as never)
       }
     ]

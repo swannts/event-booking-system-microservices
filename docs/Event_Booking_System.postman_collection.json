@@ -248,6 +248,19 @@
           }
         },
         {
+          "name": "List Bookings for User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{booking_service_url}}/bookings/users/{{created_user_id}}/bookings",
+              "host": ["{{booking_service_url}}"],
+              "path": ["bookings", "users", "{{created_user_id}}", "bookings"]
+            },
+            "description": "List all bookings for a specific user."
+          }
+        },
+        {
           "name": "Cancel Booking",
           "request": {
             "method": "POST",

@@ -2,7 +2,6 @@ export const Topics = {
   RESERVE_SEATS: "booking.reserve-seats",
   SEATS_RESERVED: "event.seats-reserved",
   SEAT_RESERVATION_FAILED: "event.seat-reservation-failed",
-  RELEASE_SEATS: "booking.release-seats",
   BOOKING_CONFIRMED: "booking.confirmed",
   BOOKING_FAILED: "booking.failed",
   BOOKING_CANCELLED: "booking.cancelled"

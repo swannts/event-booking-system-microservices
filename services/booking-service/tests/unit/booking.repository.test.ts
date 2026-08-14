@@ -97,6 +97,33 @@ class FakeBookingDatabase implements BookingDatabaseClient {
       };
       this.bookings.set(where.id, updated);
       return updated;
+    },
+    updateMany: async ({
+      where,
+      data
+    }: {
+      where: Partial<{ id: string; status: BookingStatus; eventId: string; quantity: number }>;
+      data: Partial<{ status: BookingStatus; updatedAt: Date }>;
+    }) => {
+      const row = [...this.bookings.values()].find((entry) => {
+        if (where.id && entry.id !== where.id) return false;
+        if (where.status && entry.status !== where.status) return false;
+        if (where.eventId && entry.eventId !== where.eventId) return false;
+        if (where.quantity !== undefined && entry.quantity !== where.quantity) return false;
+        return true;
+      });
+
+      if (!row) {
+        return { count: 0 };
+      }
+
+      const updated: BookingRow = {
+        ...row,
+        ...data,
+        updatedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.bookings.set(row.id, updated);
+      return { count: 1 };
     }
   };
 
@@ -139,6 +166,20 @@ class FakeBookingDatabase implements BookingDatabaseClient {
   public readonly processedBookingMessage = {
     findUnique: async ({ where }: { where: { messageId: string } }) =>
       this.processedMessages.get(where.messageId) ?? null,
+    create: async ({ data }: { data: { messageId: string } }) => {
+      if (this.processedMessages.has(data.messageId)) {
+        const error = new Error("Unique constraint failed");
+        (error as { code?: string }).code = "P2002";
+        throw error;
+      }
+
+      const row = {
+        messageId: data.messageId,
+        processedAt: new Date("2026-08-13T00:00:00.000Z")
+      };
+      this.processedMessages.set(data.messageId, row);
+      return row;
+    },
     upsert: async ({
       where,
       create
@@ -288,9 +329,221 @@ describe("PrismaBookingRepository", () => {
       }
     });
 
-    expect(cancelled?.status).toBe("CANCELLED");
+    expect(cancelled.cancelled).toBe(true);
+    expect(cancelled.booking.status).toBe("CANCELLED");
     expect(db.bookings.get(bookingId)?.status).toBe("CANCELLED");
     expect(db.outboxEvents.size).toBe(1);
     expect([...db.outboxEvents.values()][0]?.topic).toBe(Topics.BOOKING_CANCELLED);
+  });
+
+  it("does not cancel a non-confirmed booking", async () => {
+    const db = new FakeBookingDatabase();
+    const repository = new PrismaBookingRepository(db);
+    const bookingId = randomUUID();
+    db.bookings.set(bookingId, {
+      id: bookingId,
+      userId: "user-1",
+      eventId: "event-1",
+      quantity: 2,
+      status: "PENDING",
+      idempotencyKey: null,
+      createdAt: new Date("2026-08-13T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-13T00:00:00.000Z")
+    });
+
+    const cancelled = await repository.cancelBookingWithOutbox({
+      id: bookingId,
+      outbox: {
+        id: randomUUID(),
+        topic: Topics.BOOKING_CANCELLED,
+        message: {
+          messageId: randomUUID(),
+          correlationId: bookingId,
+          timestamp: new Date().toISOString(),
+          version: 1,
+          eventId: "event-1",
+          payload: {
+            bookingId,
+            eventId: "event-1",
+            quantity: 2
+          }
+        }
+      }
+    });
+
+    expect(cancelled.cancelled).toBe(false);
+    expect(cancelled.reason).toBe("INVALID_STATUS");
+    expect(db.outboxEvents.size).toBe(0);
+    expect(db.bookings.get(bookingId)?.status).toBe("PENDING");
+  });
+
+  it("processes seat reservation messages atomically and skips duplicates", async () => {
+    const db = new FakeBookingDatabase();
+    const repository = new PrismaBookingRepository(db);
+    const bookingId = randomUUID();
+    const eventId = randomUUID();
+    db.bookings.set(bookingId, {
+      id: bookingId,
+      userId: "user-1",
+      eventId,
+      quantity: 2,
+      status: "PENDING",
+      idempotencyKey: null,
+      createdAt: new Date("2026-08-13T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-13T00:00:00.000Z")
+    });
+    const messageId = randomUUID();
+
+    const [first, second] = await Promise.all([
+      repository.processSeatsReservedMessage({
+        messageId,
+        bookingId,
+        eventId,
+        quantity: 2,
+        outboxOnSuccess: {
+          id: randomUUID(),
+          topic: Topics.BOOKING_CONFIRMED,
+          message: {
+            messageId: randomUUID(),
+            correlationId: bookingId,
+            timestamp: new Date().toISOString(),
+            version: 1,
+            payload: { bookingId, eventId, quantity: 2 }
+          }
+        }
+      }),
+      repository.processSeatsReservedMessage({
+        messageId,
+        bookingId,
+        eventId,
+        quantity: 2,
+        outboxOnSuccess: {
+          id: randomUUID(),
+          topic: Topics.BOOKING_CONFIRMED,
+          message: {
+            messageId: randomUUID(),
+            correlationId: bookingId,
+            timestamp: new Date().toISOString(),
+            version: 1,
+            payload: { bookingId, eventId, quantity: 2 }
+          }
+        }
+      })
+    ]);
+
+    expect(first.confirmed).toBe(true);
+    expect(second.duplicate).toBe(true);
+    expect(db.bookings.get(bookingId)?.status).toBe("CONFIRMED");
+    expect(db.outboxEvents.size).toBe(1);
+  });
+
+  it("rejects late booking failure and late booking success transitions", async () => {
+    const db = new FakeBookingDatabase();
+    const repository = new PrismaBookingRepository(db);
+    const bookingId = randomUUID();
+    const eventId = randomUUID();
+    db.bookings.set(bookingId, {
+      id: bookingId,
+      userId: "user-1",
+      eventId,
+      quantity: 2,
+      status: "CONFIRMED",
+      idempotencyKey: null,
+      createdAt: new Date("2026-08-13T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-13T00:00:00.000Z")
+    });
+
+    const failed = await repository.processSeatReservationFailedMessage({
+      messageId: randomUUID(),
+      bookingId,
+      eventId,
+      reason: "INSUFFICIENT_SEATS",
+      outboxOnFailure: {
+        id: randomUUID(),
+        topic: Topics.BOOKING_FAILED,
+        message: {
+          messageId: randomUUID(),
+          correlationId: bookingId,
+          timestamp: new Date().toISOString(),
+          version: 1,
+          payload: { bookingId, eventId, reason: "INSUFFICIENT_SEATS" }
+        }
+      }
+    });
+
+    expect(failed.failed).toBe(false);
+    expect(failed.reason).toBe("INVALID_STATUS");
+    expect(db.bookings.get(bookingId)?.status).toBe("CONFIRMED");
+    expect(db.outboxEvents.size).toBe(0);
+
+    db.bookings.set(bookingId, {
+      ...db.bookings.get(bookingId)!,
+      status: "FAILED"
+    });
+
+    const confirmed = await repository.processSeatsReservedMessage({
+      messageId: randomUUID(),
+      bookingId,
+      eventId,
+      quantity: 2,
+      outboxOnSuccess: {
+        id: randomUUID(),
+        topic: Topics.BOOKING_CONFIRMED,
+        message: {
+          messageId: randomUUID(),
+          correlationId: bookingId,
+          timestamp: new Date().toISOString(),
+          version: 1,
+          payload: { bookingId, eventId, quantity: 2 }
+        }
+      }
+    });
+
+    expect(confirmed.confirmed).toBe(false);
+    expect(confirmed.reason).toBe("INVALID_STATUS");
+    expect(db.bookings.get(bookingId)?.status).toBe("FAILED");
+  });
+
+  it("cancels only once when concurrent cancellation requests race", async () => {
+    const db = new FakeBookingDatabase();
+    const repository = new PrismaBookingRepository(db);
+    const bookingId = randomUUID();
+    db.bookings.set(bookingId, {
+      id: bookingId,
+      userId: "user-1",
+      eventId: "event-1",
+      quantity: 2,
+      status: "CONFIRMED",
+      idempotencyKey: null,
+      createdAt: new Date("2026-08-13T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-13T00:00:00.000Z")
+    });
+
+    const cancellation = {
+      id: randomUUID(),
+      topic: Topics.BOOKING_CANCELLED,
+      message: {
+        messageId: randomUUID(),
+        correlationId: bookingId,
+        timestamp: new Date().toISOString(),
+        version: 1,
+        eventId: "event-1",
+        payload: {
+          bookingId,
+          eventId: "event-1",
+          quantity: 2
+        }
+      }
+    };
+
+    const [first, second] = await Promise.all([
+      repository.cancelBookingWithOutbox({ id: bookingId, outbox: cancellation }),
+      repository.cancelBookingWithOutbox({ id: bookingId, outbox: { ...cancellation, id: randomUUID() } })
+    ]);
+
+    expect(first.cancelled || second.cancelled).toBe(true);
+    expect(first.cancelled && second.cancelled).toBe(false);
+    expect(db.bookings.get(bookingId)?.status).toBe("CANCELLED");
+    expect(db.outboxEvents.size).toBe(1);
   });
 });

@@ -107,10 +107,10 @@ class FakeCache implements EventCache {
   }
 }
 
-async function createTestApp() {
+async function createTestApp(rateLimitMaxRequests = 100) {
   const db = new FakeEventDatabase();
   const cache = new FakeCache();
-  const app = await createEventApp({ db, cache, cacheTtlSeconds: 120 });
+  const app = await createEventApp({ db, cache, cacheTtlSeconds: 120, rateLimitMaxRequests });
   return { app, cache, db };
 }
 
@@ -181,5 +181,19 @@ describe("Event Service", () => {
 
     expect(cache.dels).toBe(1);
     await request(app).get(`/events/${eventId}`).expect(404);
+  });
+
+  it("returns 429 when the event route exceeds the configured rate limit", async () => {
+    const created = await createTestApp(1);
+
+    const event = await request(created.app)
+      .post("/events")
+      .send({ title: "Rate Limited Conference", date: "2026-09-20T10:00:00Z", totalSeats: 100 })
+      .expect(201);
+
+    await request(created.app).get(`/events/${event.body.id}`).expect(200);
+    const limited = await request(created.app).get(`/events/${event.body.id}`).expect(429);
+
+    expect(limited.body.error).toBe("Too Many Requests");
   });
 });

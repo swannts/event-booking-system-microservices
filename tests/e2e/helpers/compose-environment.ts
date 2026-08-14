@@ -64,6 +64,7 @@ export async function waitForComposeServiceHealth(service: string, command: stri
 }
 
 export async function prepareE2ECluster(): Promise<void> {
+  compose(["down", "-v", "--remove-orphans"]);
   compose(["up", "-d", "--build"]);
   await waitForComposeServiceHealth("user-db", ["pg_isready", "-U", "postgres", "-d", "event_booking"]);
   await waitForComposeServiceHealth("event-db", ["pg_isready", "-U", "postgres", "-d", "event_booking"]);

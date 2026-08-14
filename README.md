@@ -1,14 +1,49 @@
 # Event Booking System Microservices
 
-Event Booking System is a Node.js microservices monorepo for a technical assessment. It includes:
+Event Booking System is a Node.js microservices monorepo built for a 5-day technical assessment.
 
-- `user-service`
-- `event-service`
-- `booking-service`
-- `notification-service`
-- PostgreSQL, Redis, and Kafka infrastructure
+## Architecture
 
-Docker Compose remains the local development path. Helm is the Kubernetes/Minikube deployment path.
+- `user-service` handles user CRUD and uses PostgreSQL.
+- `event-service` handles event CRUD, Redis cache-aside reads, seat reservation, and seat release.
+- `booking-service` creates bookings, owns booking state transitions, and publishes booking lifecycle events.
+- `notification-service` consumes booking lifecycle events and stores notification records for demo visibility.
+- Kafka links the services asynchronously.
+- Redis is used by the event service only.
+
+## Tech Stack
+
+- Node.js 22
+- TypeScript
+- Express
+- Prisma
+- PostgreSQL
+- Redis
+- Kafka in KRaft mode
+- Docker Compose
+- Helm and Minikube
+- Vitest and Supertest
+
+## Project Structure
+
+- `services/user-service` - user API and PostgreSQL persistence
+- `services/event-service` - event API, inventory, Redis cache, Kafka consumers/producers
+- `services/booking-service` - booking API, inbox/outbox processing, cancellation flow
+- `services/notification-service` - notification consumer and read API
+- `packages/contracts` - shared Kafka message contracts and enums
+- `packages/logger` - shared structured logging
+- `packages/messaging` - shared Kafka client wrappers
+- `infrastructure/helm/event-booking` - Helm chart for Minikube/Kubernetes
+- `docs/Event_Booking_System.postman_collection.json` - Postman collection
+- `tests/e2e` - Docker Compose E2E flow
+
+## Prerequisites
+
+- Node.js 22
+- `corepack` enabled
+- Docker and Docker Compose
+- Helm 3
+- Minikube for the Kubernetes path
 
 ## Local Development
 
@@ -18,21 +53,58 @@ Run the full stack with Docker Compose:
 docker compose up --build
 ```
 
-This keeps the local development flow separate from Kubernetes.
+The compose stack now runs Prisma migrations through one-shot migration services before the application containers start.
 
-## Kubernetes Deployment
+## Docker Compose
 
-The Helm chart lives at:
+The local compose stack includes:
+
+- `user-db`
+- `event-db`
+- `booking-db`
+- `redis`
+- `kafka`
+- `user-service`
+- `event-service`
+- `booking-service`
+- `notification-service`
+
+Fresh-volume E2E runs use:
+
+```bash
+docker compose down -v --remove-orphans
+pnpm test:e2e
+```
+
+## Database Migrations
+
+Prisma migrations are the source of truth for the database schema.
+
+- User Service migration: `services/user-service/prisma/migrations`
+- Event Service migration: `services/event-service/prisma/migrations`
+- Booking Service migration: `services/booking-service/prisma/migrations`
+
+Useful commands:
+
+```bash
+corepack pnpm --dir services/user-service prisma:migrate:deploy
+corepack pnpm --dir services/event-service prisma:migrate:deploy
+corepack pnpm --dir services/booking-service prisma:migrate:deploy
+```
+
+## Minikube Deployment Using Helm
+
+Helm chart location:
 
 `infrastructure/helm/event-booking`
 
-Install it with Minikube values:
+Recommended Minikube flow:
 
 ```bash
 ./scripts/minikube-start.sh
 ```
 
-Or run Helm directly:
+Or deploy directly:
 
 ```bash
 helm upgrade --install event-booking \
@@ -42,42 +114,40 @@ helm upgrade --install event-booking \
   --create-namespace
 ```
 
-### Values files
+`values.yaml` contains the default chart settings. `values-minikube.yaml` switches the application images to local Minikube tags, reduces resource requests, and sets `imagePullPolicy: Never` for the local images.
 
-- `infrastructure/helm/event-booking/values.yaml`
-- `infrastructure/helm/event-booking/values-minikube.yaml`
+### Helm lifecycle
 
-`values.yaml` contains the default chart settings. `values-minikube.yaml` switches the application images to local Minikube tags, lowers resource requests, and sets `imagePullPolicy: Never` for those local images.
+```bash
+helm list -n event-booking
+helm upgrade --install event-booking infrastructure/helm/event-booking \
+  -f infrastructure/helm/event-booking/values-minikube.yaml \
+  --namespace event-booking \
+  --create-namespace
+helm uninstall event-booking -n event-booking
+```
 
 ### Minikube local images
 
-The deployment script builds these images into Minikube’s Docker daemon:
+The Minikube deploy script builds these images into Minikube’s Docker daemon:
 
 - `event-booking/user-service:local`
 - `event-booking/event-service:local`
 - `event-booking/booking-service:local`
 - `event-booking/notification-service:local`
 
-Helm then deploys those images without trying to pull them from a registry.
+That lets Kubernetes start the local images without pulling from a registry.
 
-### Inspect the release
-
-```bash
-helm list -n event-booking
-kubectl get pods -n event-booking
-kubectl get svc -n event-booking
-kubectl get statefulsets -n event-booking
-```
-
-### Uninstall
+### Port forwarding
 
 ```bash
-helm uninstall event-booking -n event-booking
+kubectl -n event-booking port-forward svc/event-booking-user-service 3000:3000
+kubectl -n event-booking port-forward svc/event-booking-event-service 3001:3001
+kubectl -n event-booking port-forward svc/event-booking-booking-service 3002:3002
+kubectl -n event-booking port-forward svc/event-booking-notification-service 3003:3003
 ```
 
 ### Override values
-
-Pass additional overrides with `--set` or another values file:
 
 ```bash
 helm upgrade --install event-booking \
@@ -87,76 +157,91 @@ helm upgrade --install event-booking \
   --set eventService.cacheTtlSeconds=300
 ```
 
-## Service Ports
+## API Endpoint Table
 
-- User Service: `3000`
-- Event Service: `3001`
-- Booking Service: `3002`
-- Notification Service: `3003`
-- Kafka: `9092`
-- Redis: `6379`
-- PostgreSQL: `5432`
+| Service | Method | Path |
+| --- | --- | --- |
+| User | POST | `/users` |
+| User | GET | `/users` |
+| User | GET | `/users/:id` |
+| Event | POST | `/events` |
+| Event | GET | `/events` |
+| Event | GET | `/events/:id` |
+| Event | PUT | `/events/:id` |
+| Event | DELETE | `/events/:id` |
+| Booking | POST | `/bookings` |
+| Booking | GET | `/bookings/:id` |
+| Booking | GET | `/bookings/users/:userId/bookings` |
+| Booking | POST | `/bookings/:id/cancel` |
+| Notification | GET | `/notifications` |
 
-## Kubernetes Service DNS Names
+The booking create endpoint supports the `Idempotency-Key` header.
 
-When installed as `event-booking` in the `event-booking` namespace, the chart generates these internal service names:
+## Redis Caching Behavior
 
-- `event-booking-user-service.event-booking.svc.cluster.local`
-- `event-booking-event-service.event-booking.svc.cluster.local`
-- `event-booking-booking-service.event-booking.svc.cluster.local`
-- `event-booking-notification-service.event-booking.svc.cluster.local`
-- `event-booking-event-db.event-booking.svc.cluster.local`
-- `event-booking-booking-db.event-booking.svc.cluster.local`
-- `event-booking-redis.event-booking.svc.cluster.local`
-- `event-booking-kafka.event-booking.svc.cluster.local`
+- Event Service uses Redis as cache-aside storage for event reads.
+- Cache keys follow the `event:{eventId}` pattern.
+- Reads populate Redis on cache misses.
+- Updates, deletes, reservations, and releases invalidate the cached event.
 
-## Database Ownership
+## Kafka Event Flow
 
-Each service owns its own data boundary.
+1. Booking Service publishes `booking.reserve-seats`.
+2. Event Service reserves seats and publishes `event.seats-reserved` or `event.seat-reservation-failed`.
+3. Booking Service consumes the event outcome, updates booking state, and publishes `booking.confirmed` or `booking.failed`.
+4. Booking cancellation publishes `booking.cancelled`.
+5. Event Service consumes `booking.cancelled` and releases seats.
+6. Notification Service consumes booking lifecycle events and stores notification records.
 
-- User Service uses its own PostgreSQL database (`user-db`).
-- Event Service uses its own PostgreSQL database (`event-db`).
-- Booking Service uses its own PostgreSQL database (`booking-db`).
-- Notification Service consumes Kafka events and logs/stores notifications.
+## Race-Condition Prevention
 
-No service reads another service’s database directly.
+- Event Service updates seat inventory with conditional SQL inside a transaction.
+- Booking Service uses atomic state transitions for booking confirmation, failure, and cancellation.
+- Inbox rows prevent duplicate Kafka deliveries from applying twice.
+- Outbox rows ensure durable event publication after the database commit.
+
+## Running Tests
+
+```bash
+corepack pnpm install --frozen-lockfile
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
+corepack pnpm test:e2e
+```
+
+The event-service concurrency test and the compose E2E suite are included in the validation flow.
 
 ## Postman Collection
 
-A complete Postman collection is provided for testing all microservice APIs:
+Import `docs/Event_Booking_System.postman_collection.json` into Postman to exercise:
 
-File: [`docs/Event_Booking_System.postman_collection.json`](file:///home/swann/PhpstormProjects/event-booking-system-microservices/docs/Event_Booking_System.postman_collection.json)
+- create/list/get users
+- create/list/update/delete events
+- create booking with `Idempotency-Key`
+- get booking
+- list bookings for a user
+- cancel booking
+- list notifications
+- health checks
 
-### Importing into Postman:
-1. Open Postman.
-2. Click **Import** in the upper left.
-3. Select `docs/Event_Booking_System.postman_collection.json`.
-4. Run requests against User, Event, Booking, and Notification services.
+## Health Endpoints
+
+Each service exposes:
+
+- `GET /health/live`
+- `GET /health/ready`
 
 ## Bonus Features
 
-- **Redis-based API Rate Limiting**: Built-in sliding window rate limiter in `services/event-service/src/middleware/rate-limiter.ts` returning standard rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`).
-- **Health Checks**: `/health/live` and `/health/ready` endpoints across all microservices.
-- **Rolling Deployment**: Kubernetes deployments use rolling update strategies for zero-downtime updates.
+- Redis-backed rate limiting on Event Service routes
+- Redis cache-aside for event reads
+- Kafka-based asynchronous booking lifecycle processing
+- Transactional inbox and outbox handling
 
-## Port Forward Examples
+## Production Considerations
 
-Use port-forwarding if you want to access services from your workstation:
-
-```bash
-kubectl -n event-booking port-forward svc/event-booking-user-service 3000:3000
-kubectl -n event-booking port-forward svc/event-booking-event-service 3001:3001
-kubectl -n event-booking port-forward svc/event-booking-booking-service 3002:3002
-kubectl -n event-booking port-forward svc/event-booking-notification-service 3003:3003
-```
-
-## Deployment Scripts
-
-- `scripts/minikube-start.sh` starts Minikube and then deploys the Helm release.
-- `scripts/minikube-deploy.sh` builds local images, installs or upgrades the Helm release, waits for workloads, and prints release/pod/service status.
-
-## Notes
-
-- The chart uses placeholder local/demo credentials for the assessment.
-- Helm values control the non-sensitive configuration, while database URLs and credentials are stored in a Kubernetes Secret.
-- Docker Compose is still the local development path. Helm is the Kubernetes deployment mechanism for this assessment.
+- Kafka is intentionally configured as a single broker for the assessment.
+- Authentication is outside the assessment scope.
+- Notification persistence is lightweight and could be replaced with durable storage in production.
+- Production hardening can add richer observability, security, and multi-broker resilience later.

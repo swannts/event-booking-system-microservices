@@ -1,7 +1,8 @@
 import { Topics } from "@event-booking/contracts";
 import { KafkaConsumerRunner, type KafkaConsumerConfig } from "@event-booking/messaging";
 import { BookingEventsConsumer } from "./consumers/seats-reserved.consumer";
-import type { BookingPublisher, BookingRepository } from "../../modules/bookings/booking.types";
+import type { BookingRepository } from "../../modules/bookings/booking.repository";
+import type { BookingOutboxDispatcher } from "../../modules/bookings/booking-outbox.dispatcher";
 
 export type BookingMessagingController = {
   consumerRunner: KafkaConsumerRunner;
@@ -12,9 +13,9 @@ export type BookingMessagingController = {
 export function createBookingMessaging(dependencies: {
   kafkaConfig: KafkaConsumerConfig;
   repository: BookingRepository;
-  publisher: BookingPublisher;
+  outboxDispatcher: BookingOutboxDispatcher;
 }): BookingMessagingController {
-  const consumer = new BookingEventsConsumer(dependencies.repository, dependencies.publisher);
+  const consumer = new BookingEventsConsumer(dependencies.repository, dependencies.outboxDispatcher);
   const consumerRunner = new KafkaConsumerRunner(
     {
       clientId: dependencies.kafkaConfig.clientId,

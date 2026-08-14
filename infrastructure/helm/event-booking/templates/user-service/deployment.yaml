@@ -18,6 +18,32 @@ spec:
         {{- include "event-booking.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: user-service
     spec:
+      initContainers:
+        - name: wait-for-user-db
+          image: "{{ .Values.images.postgres.repository }}:{{ .Values.images.postgres.tag }}"
+          imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
+          command:
+            - sh
+            - -ec
+            - until pg_isready -h {{ include "event-booking.componentFqdn" (dict "root" . "component" "user-db") }} -p {{ int .Values.userDb.service.port }} -U {{ .Values.databases.postgres.username }} -d {{ .Values.databases.postgres.database }}; do echo waiting for user-db; sleep 2; done
+        - name: migrate-user-db
+          image: "{{ .Values.images.userService.repository }}:{{ .Values.images.userService.tag }}"
+          imagePullPolicy: {{ .Values.images.userService.pullPolicy }}
+          command:
+            - sh
+            - -lc
+            - corepack pnpm --dir services/user-service exec prisma migrate deploy
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-secret
+                  key: USER_DATABASE_URL
       containers:
         - name: user-service
           image: "{{ .Values.images.userService.repository }}:{{ .Values.images.userService.tag }}"
@@ -64,4 +90,3 @@ spec:
             failureThreshold: {{ .Values.userService.probes.liveness.failureThreshold }}
           resources:
             {{- toYaml .Values.userService.resources | nindent 12 }}
-

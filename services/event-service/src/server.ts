@@ -51,6 +51,9 @@ async function main() {
     cache,
     cacheTtlSeconds: env.CACHE_TTL_SECONDS,
     publisher,
+    redisClient: redis,
+    rateLimitWindowSeconds: env.RATE_LIMIT_WINDOW_SECONDS,
+    rateLimitMaxRequests: env.RATE_LIMIT_MAX_REQUESTS,
     repository,
     service
   });
