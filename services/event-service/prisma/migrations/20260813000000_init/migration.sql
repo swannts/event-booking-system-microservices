@@ -11,7 +11,7 @@ CREATE TABLE "events" (
 );
 
 CREATE TABLE "processed_event_messages" (
-  "message_id" UUID NOT NULL,
+  "message_id" TEXT NOT NULL,
   "processed_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   CONSTRAINT "processed_event_messages_pkey" PRIMARY KEY ("message_id")

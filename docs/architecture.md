@@ -50,7 +50,7 @@ The system is intentionally assessment-sized rather than a full enterprise platf
 - Supports idempotency keys for duplicate request protection.
 - Publishes `booking.reserve-seats`.
 - Consumes reservation success/failure events.
-- Supports cancellation flow through `booking.release-seats`.
+- Supports cancellation flow through `booking.cancelled`.
 - Exposes `/health/live` and `/health/ready`.
 
 ### Notification Service
@@ -63,7 +63,7 @@ The system is intentionally assessment-sized rather than a full enterprise platf
 
 The current implementation follows a database-per-service approach where practical:
 
-- User Service: SQLite file-backed database in the current implementation
+- User Service: PostgreSQL
 - Event Service: PostgreSQL
 - Booking Service: PostgreSQL
 - Notification Service: in-memory notification store for the assessment flow
@@ -89,7 +89,7 @@ Current topics:
 - `booking.reserve-seats`
 - `event.seats-reserved`
 - `event.seat-reservation-failed`
-- `booking.release-seats`
+- `booking.cancelled`
 - `booking.confirmed`
 - `booking.failed`
 - `booking.cancelled`
@@ -198,7 +198,7 @@ flowchart LR
 
 ## Current Tradeoffs
 
-- User Service uses SQLite to keep the implementation compact.
+- User Service uses PostgreSQL to keep the implementation aligned with the assessment requirements.
 - Notification Service keeps notifications lightweight instead of adding a separate persistence layer.
 - Kafka introduces eventual consistency, so the booking response is asynchronous after the initial `PENDING` booking.
 - The outbox/inbox style flow adds reliability but also adds a small amount of schema and dispatcher complexity.

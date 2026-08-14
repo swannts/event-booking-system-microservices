@@ -2,21 +2,29 @@ import type { Prisma, PrismaClient } from "../../../generated/prisma";
 import type { MessageEnvelope, Topic } from "@event-booking/contracts";
 import type { BookingStatus } from "@event-booking/contracts";
 import type {
+  CancelBookingResult,
   BookingDatabaseClient,
   BookingDto,
+  BookingProcessingFailureReason,
   BookingOutboxRecord,
   BookingOutboxStatus,
   BookingRecord,
+  ProcessSeatReservationFailedResult,
+  ProcessSeatsReservedResult,
   BookingRepository,
   BookingTransactionalClient
 } from "./booking.types";
 
 export type {
+  CancelBookingResult,
   BookingDatabaseClient,
   BookingDto,
+  BookingProcessingFailureReason,
   BookingOutboxRecord,
   BookingOutboxStatus,
   BookingRecord,
+  ProcessSeatReservationFailedResult,
+  ProcessSeatsReservedResult,
   BookingRepository,
   BookingTransactionalClient
 };
@@ -70,6 +78,33 @@ function serializeError(error: unknown): string {
   }
 
   return typeof error === "string" ? error : "Outbox publish failed";
+}
+
+function classifyBookingFailure(
+  booking: BookingDto | null,
+  input: {
+    eventId: string;
+    quantity?: number;
+    status?: BookingStatus;
+  }
+): BookingProcessingFailureReason {
+  if (!booking) {
+    return "BOOKING_NOT_FOUND";
+  }
+
+  if (booking.eventId !== input.eventId) {
+    return "EVENT_MISMATCH";
+  }
+
+  if (typeof input.quantity === "number" && booking.quantity !== input.quantity) {
+    return "QUANTITY_MISMATCH";
+  }
+
+  if (input.status && booking.status !== input.status) {
+    return "INVALID_STATUS";
+  }
+
+  return "INVALID_STATUS";
 }
 
 export class PrismaBookingRepository implements BookingRepository {
@@ -209,35 +244,195 @@ export class PrismaBookingRepository implements BookingRepository {
       topic: Topic;
       message: MessageEnvelope<unknown>;
     };
-  }): Promise<BookingDto | null> {
-    try {
-      return await this.db.$transaction(async (tx) => {
-        const transactional = tx as unknown as BookingTransactionalClient;
-        const booking = await transactional.booking.update({
-          where: { id: input.id },
-          data: {
-            status: "CANCELLED"
-          }
-        });
-
-        await transactional.bookingOutboxEvent.create({
-          data: {
-            id: input.outbox.id,
-            topic: input.outbox.topic,
-            messageId: input.outbox.message.messageId,
-            message: input.outbox.message as Prisma.InputJsonValue,
-            status: "PENDING",
-            attempts: 0,
-            lastError: null,
-            publishedAt: null
-          }
-        });
-
-        return mapRow(booking);
+  }): Promise<CancelBookingResult> {
+    return this.db.$transaction(async (tx) => {
+      const transactional = tx as unknown as BookingTransactionalClient;
+      const updateResult = await transactional.booking.updateMany({
+        where: { id: input.id, status: "CONFIRMED" },
+        data: { status: "CANCELLED", updatedAt: new Date() }
       });
-    } catch {
-      return null;
-    }
+
+      if (updateResult.count === 0) {
+        const booking = await transactional.booking.findUnique({ where: { id: input.id } });
+        if (!booking) {
+          return { cancelled: false, reason: "BOOKING_NOT_FOUND" } as const;
+        }
+
+        return { cancelled: false, reason: "INVALID_STATUS" } as const;
+      }
+
+      const booking = await transactional.booking.findUnique({ where: { id: input.id } });
+      if (!booking) {
+        return { cancelled: false, reason: "BOOKING_NOT_FOUND" } as const;
+      }
+
+      await transactional.bookingOutboxEvent.create({
+        data: {
+          id: input.outbox.id,
+          topic: input.outbox.topic,
+          messageId: input.outbox.message.messageId,
+          message: input.outbox.message as Prisma.InputJsonValue,
+          status: "PENDING",
+          attempts: 0,
+          lastError: null,
+          publishedAt: null
+        }
+      });
+
+      return {
+        cancelled: true,
+        booking: mapRow(booking),
+        outboxRowId: input.outbox.id
+      } as const;
+    });
+  }
+
+  async processSeatsReservedMessage(input: {
+    messageId: string;
+    bookingId: string;
+    eventId: string;
+    quantity: number;
+    outboxOnSuccess: {
+      id: string;
+      topic: Topic;
+      message: MessageEnvelope<unknown>;
+    };
+  }): Promise<ProcessSeatsReservedResult> {
+    return this.db.$transaction(async (tx) => {
+      const transactional = tx as unknown as BookingTransactionalClient;
+
+      try {
+        await transactional.processedBookingMessage.create({
+          data: { messageId: input.messageId }
+        });
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          return { duplicate: true, confirmed: false, reason: "DUPLICATE_MESSAGE" } as const;
+        }
+
+        throw error;
+      }
+
+      const updateResult = await transactional.booking.updateMany({
+        where: {
+          id: input.bookingId,
+          eventId: input.eventId,
+          quantity: input.quantity,
+          status: "PENDING"
+        },
+        data: {
+          status: "CONFIRMED",
+          updatedAt: new Date()
+        }
+      });
+
+      const booking = await transactional.booking.findUnique({ where: { id: input.bookingId } });
+
+      if (updateResult.count === 0 || !booking || booking.eventId !== input.eventId || booking.quantity !== input.quantity) {
+        return {
+          duplicate: false,
+          confirmed: false,
+          reason: classifyBookingFailure(booking ? mapRow(booking) : null, {
+            eventId: input.eventId,
+            quantity: input.quantity,
+            status: "PENDING"
+          })
+        } as const;
+      }
+
+      await transactional.bookingOutboxEvent.create({
+        data: {
+          id: input.outboxOnSuccess.id,
+          topic: input.outboxOnSuccess.topic,
+          messageId: input.outboxOnSuccess.message.messageId,
+          message: input.outboxOnSuccess.message as Prisma.InputJsonValue,
+          status: "PENDING",
+          attempts: 0,
+          lastError: null,
+          publishedAt: null
+        }
+      });
+
+      return {
+        duplicate: false,
+        confirmed: true,
+        booking: mapRow(booking),
+        outboxRowId: input.outboxOnSuccess.id
+      } as const;
+    });
+  }
+
+  async processSeatReservationFailedMessage(input: {
+    messageId: string;
+    bookingId: string;
+    eventId: string;
+    reason: "INSUFFICIENT_SEATS" | "EVENT_NOT_FOUND";
+    outboxOnFailure: {
+      id: string;
+      topic: Topic;
+      message: MessageEnvelope<unknown>;
+    };
+  }): Promise<ProcessSeatReservationFailedResult> {
+    return this.db.$transaction(async (tx) => {
+      const transactional = tx as unknown as BookingTransactionalClient;
+
+      try {
+        await transactional.processedBookingMessage.create({
+          data: { messageId: input.messageId }
+        });
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          return { duplicate: true, failed: false, reason: "DUPLICATE_MESSAGE" } as const;
+        }
+
+        throw error;
+      }
+
+      const updateResult = await transactional.booking.updateMany({
+        where: {
+          id: input.bookingId,
+          eventId: input.eventId,
+          status: "PENDING"
+        },
+        data: {
+          status: "FAILED",
+          updatedAt: new Date()
+        }
+      });
+
+      const booking = await transactional.booking.findUnique({ where: { id: input.bookingId } });
+
+      if (updateResult.count === 0 || !booking || booking.eventId !== input.eventId) {
+        return {
+          duplicate: false,
+          failed: false,
+          reason: classifyBookingFailure(booking ? mapRow(booking) : null, {
+            eventId: input.eventId,
+            status: "PENDING"
+          })
+        } as const;
+      }
+
+      await transactional.bookingOutboxEvent.create({
+        data: {
+          id: input.outboxOnFailure.id,
+          topic: input.outboxOnFailure.topic,
+          messageId: input.outboxOnFailure.message.messageId,
+          message: input.outboxOnFailure.message as Prisma.InputJsonValue,
+          status: "PENDING",
+          attempts: 0,
+          lastError: null,
+          publishedAt: null
+        }
+      });
+
+      return {
+        duplicate: false,
+        failed: true,
+        booking: mapRow(booking),
+        outboxRowId: input.outboxOnFailure.id
+      } as const;
+    });
   }
 
   async storeIdempotencyKey(input: {

@@ -95,16 +95,6 @@ export class BookingsService {
 
   async cancelBooking(id: string): Promise<BookingDto> {
     const booking = await this.getBookingById(id);
-    if (booking.status !== "CONFIRMED") {
-      this.logger.warn(
-        {
-          bookingId: booking.id,
-          status: booking.status
-        },
-        "Rejected booking cancellation for non-confirmed booking"
-      );
-      throw BookingErrors.invalidStatus();
-    }
 
     const cancelled = await this.repository.cancelBookingWithOutbox({
       id,
@@ -125,19 +115,31 @@ export class BookingsService {
         } satisfies MessageEnvelope<BookingCancelledPayload>
       }
     });
-    if (!cancelled) {
-      throw BookingErrors.notFound();
+    if (!cancelled.cancelled) {
+      if (cancelled.reason === "BOOKING_NOT_FOUND") {
+        throw BookingErrors.notFound();
+      }
+
+      this.logger.warn(
+        {
+          bookingId: booking.id,
+          status: booking.status
+        },
+        "Rejected booking cancellation for non-confirmed booking"
+      );
+      throw BookingErrors.invalidStatus();
     }
+    const cancelledBooking = cancelled.booking;
     this.logger.info(
       {
-        bookingId: cancelled.id,
-        eventId: cancelled.eventId,
-        quantity: cancelled.quantity
+        bookingId: cancelledBooking.id,
+        eventId: cancelledBooking.eventId,
+        quantity: cancelledBooking.quantity
       },
       "Booking cancelled and cancellation outbox event queued"
     );
     await this.outboxDispatcher.dispatchPending();
-    return cancelled;
+    return cancelledBooking;
   }
 
   async markConfirmed(id: string): Promise<BookingDto> {

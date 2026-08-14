@@ -42,6 +42,14 @@ export class BookingClientDriver {
     return await res.json();
   }
 
+  async listBookingsForUser(userId: string): Promise<BookingResponse[]> {
+    const res = await fetch(`${this.baseUrl}/bookings/users/${userId}/bookings`);
+    if (!res.ok) {
+      throw new Error(`Failed to list bookings (${res.status})`);
+    }
+    return await res.json();
+  }
+
   async cancelBooking(id: string): Promise<BookingResponse> {
     const res = await fetch(`${this.baseUrl}/bookings/${id}/cancel`, {
       method: "POST"

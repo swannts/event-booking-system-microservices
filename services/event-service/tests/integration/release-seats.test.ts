@@ -49,32 +49,18 @@ async function waitForDatabase(databaseUrl: string): Promise<void> {
   throw new Error("Prisma could not connect to the Postgres test database in time");
 }
 
-async function createSchema(databaseUrl: string): Promise<void> {
-  const db = createEventDatabase(databaseUrl);
-  await db.$connect();
-  try {
-    await db.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS events (
-        id UUID PRIMARY KEY,
-        title TEXT NOT NULL,
-        date TIMESTAMP(3) NOT NULL,
-        total_seats INTEGER NOT NULL,
-        available_seats INTEGER NOT NULL,
-        created_at TIMESTAMP(3) NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP(3) NOT NULL DEFAULT NOW()
-      );
-    `);
-    await db.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS processed_event_messages (
-        message_id TEXT PRIMARY KEY,
-        processed_at TIMESTAMP(3) NOT NULL DEFAULT NOW()
-      );
-    `);
-    await db.$executeRawUnsafe(`DELETE FROM processed_event_messages;`);
-    await db.$executeRawUnsafe(`DELETE FROM events;`);
-  } finally {
-    await db.$disconnect();
-  }
+async function applyMigrations(databaseUrl: string): Promise<void> {
+  execFileSync(
+    "corepack",
+    ["pnpm", "prisma:migrate:deploy"],
+    {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        DATABASE_URL: databaseUrl
+      }
+    }
+  );
 }
 
 describe("release seats safety", () => {
@@ -108,7 +94,7 @@ describe("release seats safety", () => {
     context.databaseUrl = `postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:${hostPort}/${POSTGRES_DB}`;
     await waitForPostgres(context.containerName);
     await waitForDatabase(context.databaseUrl);
-    await createSchema(context.databaseUrl);
+    await applyMigrations(context.databaseUrl);
 
     context.db = createEventDatabase(context.databaseUrl);
     await context.db.$connect();

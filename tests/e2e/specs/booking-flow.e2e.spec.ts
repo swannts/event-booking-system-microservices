@@ -71,9 +71,7 @@ describe("E2E Booking Lifecycle Spec", () => {
     await waitFor(
       async () => {
         const notifications = await notificationDriver.listNotifications();
-        notification = notifications.find(
-          (n) => n.type === "BOOKING_CONFIRMED" && (n.payload as any)?.bookingId === booking.id
-        );
+        notification = notifications.find((n) => n.type === "BOOKING_CONFIRMED" && n.bookingId === booking.id);
         return Boolean(notification);
       },
       30000,
@@ -83,5 +81,7 @@ describe("E2E Booking Lifecycle Spec", () => {
 
     expect(notification).toBeDefined();
     expect(notification.type).toBe("BOOKING_CONFIRMED");
+    expect(notification.bookingId).toBe(booking.id);
+    expect(notification.eventId).toBe(event.id);
   });
 });

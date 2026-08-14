@@ -9,6 +9,8 @@ const schema = z.object({
   KAFKA_CLIENT_ID: z.string().min(1).default("event-service"),
   KAFKA_GROUP_ID: z.string().min(1).default("event-service-consumers"),
   CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(120),
+  RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
   LOG_LEVEL: z.string().default("info")
 });
 

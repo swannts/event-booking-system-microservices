@@ -26,6 +26,24 @@ spec:
             - sh
             - -ec
             - until pg_isready -h {{ include "event-booking.componentFqdn" (dict "root" . "component" "booking-db") }} -p {{ int .Values.bookingDb.service.port }} -U {{ .Values.databases.postgres.username }} -d {{ .Values.databases.postgres.database }}; do echo waiting for booking-db; sleep 2; done
+        - name: migrate-booking-db
+          image: "{{ .Values.images.bookingService.repository }}:{{ .Values.images.bookingService.tag }}"
+          imagePullPolicy: {{ .Values.images.bookingService.pullPolicy }}
+          command:
+            - sh
+            - -lc
+            - corepack pnpm --dir services/booking-service exec prisma migrate deploy
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-secret
+                  key: BOOKING_DATABASE_URL
         - name: wait-for-kafka
           image: "{{ .Values.images.kafka.repository }}:{{ .Values.images.kafka.tag }}"
           imagePullPolicy: {{ .Values.images.kafka.pullPolicy }}

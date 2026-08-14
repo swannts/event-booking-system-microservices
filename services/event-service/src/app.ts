@@ -18,6 +18,8 @@ import { EventController } from "./modules/events/event.controller";
 import type { MessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { InMemoryMessagePublisher } from "./infrastructure/messaging/message-publisher";
 import { notFoundHandler } from "./middleware/not-found";
+import { createRedisRateLimiter } from "./middleware/rate-limiter";
+import type { EventRedisClient } from "./config/redis";
 
 export type EventServiceDependencies = {
   db: EventDatabaseClient;
@@ -26,6 +28,9 @@ export type EventServiceDependencies = {
   publisher?: MessagePublisher;
   repository?: EventRepository;
   service?: EventsService;
+  redisClient?: EventRedisClient;
+  rateLimitWindowSeconds?: number;
+  rateLimitMaxRequests?: number;
 };
 
 export async function createEventApp({
@@ -34,7 +39,10 @@ export async function createEventApp({
   cacheTtlSeconds = 120,
   publisher = new InMemoryMessagePublisher(),
   repository,
-  service
+  service,
+  redisClient,
+  rateLimitWindowSeconds = 60,
+  rateLimitMaxRequests = 100
 }: EventServiceDependencies): Promise<Express> {
   const app = express();
   const httpLogger = createHttpLogger("event-service");
@@ -61,7 +69,15 @@ export async function createEventApp({
     res.json({ status: "ok" });
   });
 
-  app.use("/events", createEventRouter(controller));
+  app.use(
+    "/events",
+    createRedisRateLimiter({
+      windowSeconds: rateLimitWindowSeconds,
+      maxRequests: rateLimitMaxRequests,
+      redisClient
+    }),
+    createEventRouter(controller)
+  );
   app.use(notFoundHandler);
   app.use(errorHandler);
 

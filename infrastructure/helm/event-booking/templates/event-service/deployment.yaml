@@ -26,6 +26,24 @@ spec:
             - sh
             - -ec
             - until pg_isready -h {{ include "event-booking.componentFqdn" (dict "root" . "component" "event-db") }} -p {{ int .Values.eventDb.service.port }} -U {{ .Values.databases.postgres.username }} -d {{ .Values.databases.postgres.database }}; do echo waiting for event-db; sleep 2; done
+        - name: migrate-event-db
+          image: "{{ .Values.images.eventService.repository }}:{{ .Values.images.eventService.tag }}"
+          imagePullPolicy: {{ .Values.images.eventService.pullPolicy }}
+          command:
+            - sh
+            - -lc
+            - corepack pnpm --dir services/event-service exec prisma migrate deploy
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-secret
+                  key: EVENT_DATABASE_URL
         - name: wait-for-redis
           image: "{{ .Values.images.redis.repository }}:{{ .Values.images.redis.tag }}"
           imagePullPolicy: {{ .Values.images.redis.pullPolicy }}
@@ -88,6 +106,16 @@ spec:
                 configMapKeyRef:
                   name: {{ include "event-booking.fullname" . }}-config
                   key: EVENT_CACHE_TTL_SECONDS
+            - name: RATE_LIMIT_WINDOW_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: RATE_LIMIT_WINDOW_SECONDS
+            - name: RATE_LIMIT_MAX_REQUESTS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: RATE_LIMIT_MAX_REQUESTS
             - name: LOG_LEVEL
               valueFrom:
                 configMapKeyRef:

@@ -77,54 +77,18 @@ async function waitForDatabase(databaseUrl: string): Promise<void> {
   throw new Error("Prisma could not connect to the Postgres test database in time");
 }
 
-async function createSchema(databaseUrl: string): Promise<void> {
-  const db = createEventDatabase(databaseUrl);
-  await db.$connect();
-  try {
-    await db.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS events (
-        id UUID PRIMARY KEY,
-        title TEXT NOT NULL,
-        date TIMESTAMP(3) NOT NULL,
-        total_seats INTEGER NOT NULL,
-        available_seats INTEGER NOT NULL,
-        created_at TIMESTAMP(3) NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP(3) NOT NULL DEFAULT NOW()
-      );
-    `);
-    await db.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS processed_event_messages (
-        message_id TEXT PRIMARY KEY,
-        processed_at TIMESTAMP(3) NOT NULL DEFAULT NOW()
-      );
-    `);
-    await db.$executeRawUnsafe(`
-      DO $$ BEGIN
-        CREATE TYPE "OutboxStatus" AS ENUM ('PENDING', 'PUBLISHED');
-      EXCEPTION
-        WHEN duplicate_object THEN null;
-      END $$;
-    `);
-    await db.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS event_outbox_events (
-        id UUID PRIMARY KEY,
-        topic TEXT NOT NULL,
-        message_id TEXT NOT NULL UNIQUE,
-        message JSONB NOT NULL,
-        status "OutboxStatus" NOT NULL DEFAULT 'PENDING',
-        attempts INTEGER NOT NULL DEFAULT 0,
-        last_error TEXT,
-        created_at TIMESTAMP(3) NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP(3) NOT NULL DEFAULT NOW(),
-        published_at TIMESTAMP(3)
-      );
-    `);
-    await db.$executeRawUnsafe(`DELETE FROM event_outbox_events;`);
-    await db.$executeRawUnsafe(`DELETE FROM processed_event_messages;`);
-    await db.$executeRawUnsafe(`DELETE FROM events;`);
-  } finally {
-    await db.$disconnect();
-  }
+async function applyMigrations(databaseUrl: string): Promise<void> {
+  execFileSync(
+    "corepack",
+    ["pnpm", "prisma:migrate:deploy"],
+    {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        DATABASE_URL: databaseUrl
+      }
+    }
+  );
 }
 
 describe("redis cache integration", () => {
@@ -182,7 +146,7 @@ describe("redis cache integration", () => {
     await waitForPostgres(context.postgresContainer);
     await waitForRedis(context.redisUrl);
     await waitForDatabase(context.databaseUrl);
-    await createSchema(context.databaseUrl);
+    await applyMigrations(context.databaseUrl);
 
     context.db = createEventDatabase(context.databaseUrl);
     await context.db.$connect();
