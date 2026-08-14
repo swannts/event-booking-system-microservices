@@ -40,14 +40,6 @@ images:
 userService:
   replicaCount: 1
   port: 3000
-  databaseUrl: file:/data/dev.db
-  persistence:
-    enabled: false
-    storageClassName: ""
-    accessModes:
-      - ReadWriteOnce
-    size: 1Gi
-    mountPath: /data
   resources:
     requests:
       cpu: 100m

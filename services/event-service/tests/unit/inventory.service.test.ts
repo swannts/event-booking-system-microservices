@@ -35,10 +35,11 @@ function createMessage(overrides: Partial<MessageEnvelope<ReserveSeatsPayload>> 
   };
 }
 
-class FakeRepository implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed"> {
+class FakeRepository implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage"> {
   public hasProcessedMessage = vi.fn();
   public reserveSeats = vi.fn();
   public markMessageProcessed = vi.fn();
+  public processReserveSeatsMessage = vi.fn();
 }
 
 class FakeCache implements Pick<EventCache, "del"> {
@@ -74,23 +75,28 @@ describe("BookingReservationConsumer", () => {
 
   it("handles a successful seat reservation, invalidates cache, preserves correlation id, and records the message", async () => {
     const message = createMessage({ correlationId: "corr-123" });
-    repository.hasProcessedMessage.mockResolvedValue(false);
-    repository.reserveSeats.mockResolvedValue({
-      id: "event-1",
-      title: "Node.js Conference",
-      date: "2026-09-20T10:00:00.000Z",
-      totalSeats: 10,
-      availableSeats: 8,
-      createdAt: "2026-08-13T00:00:00.000Z",
-      updatedAt: "2026-08-13T00:00:00.000Z"
-    } satisfies EventDto);
+    repository.processReserveSeatsMessage.mockResolvedValue({
+      duplicate: false,
+      reserved: true,
+      event: {
+        id: "event-1",
+        title: "Node.js Conference",
+        date: "2026-09-20T10:00:00.000Z",
+        totalSeats: 10,
+        availableSeats: 8,
+        createdAt: "2026-08-13T00:00:00.000Z",
+        updatedAt: "2026-08-13T00:00:00.000Z"
+      } satisfies EventDto
+    });
 
     await consumer.handle(message);
 
-    expect(repository.hasProcessedMessage).toHaveBeenCalledWith(message.messageId);
-    expect(repository.reserveSeats).toHaveBeenCalledWith(message.payload.eventId, message.payload.quantity);
+    expect(repository.processReserveSeatsMessage).toHaveBeenCalledWith({
+      messageId: message.messageId,
+      eventId: message.payload.eventId,
+      quantity: message.payload.quantity
+    });
     expect(cache.del).toHaveBeenCalledWith(message.payload.eventId);
-    expect(repository.markMessageProcessed).toHaveBeenCalledWith(message.messageId);
     expect(publisher.publish).toHaveBeenCalledWith(
       Topics.SEATS_RESERVED,
       expect.objectContaining({
@@ -105,10 +111,13 @@ describe("BookingReservationConsumer", () => {
     expect(logger.info).toHaveBeenCalled();
   });
 
-  it("publishes a failure event, records the message, and throws on insufficient seats", async () => {
+  it("publishes a failure event on insufficient seats", async () => {
     const message = createMessage({ correlationId: "corr-456" });
-    repository.hasProcessedMessage.mockResolvedValue(false);
-    repository.reserveSeats.mockResolvedValue(null);
+    repository.processReserveSeatsMessage.mockResolvedValue({
+      duplicate: false,
+      reserved: false,
+      reason: "INSUFFICIENT_SEATS"
+    });
     publisher.publish.mockResolvedValue(undefined);
 
     await expect(consumer.handle(message)).resolves.toBeUndefined();
@@ -125,34 +134,38 @@ describe("BookingReservationConsumer", () => {
       })
     );
     expect(cache.del).not.toHaveBeenCalled();
-    expect(repository.markMessageProcessed).toHaveBeenCalledWith(message.messageId);
   });
 
   it("propagates publisher failures during successful reservations", async () => {
     const message = createMessage();
-    repository.hasProcessedMessage.mockResolvedValue(false);
-    repository.reserveSeats.mockResolvedValue({
-      id: "event-1",
-      title: "Node.js Conference",
-      date: "2026-09-20T10:00:00.000Z",
-      totalSeats: 10,
-      availableSeats: 8,
-      createdAt: "2026-08-13T00:00:00.000Z",
-      updatedAt: "2026-08-13T00:00:00.000Z"
-    } satisfies EventDto);
+    repository.processReserveSeatsMessage.mockResolvedValue({
+      duplicate: false,
+      reserved: true,
+      event: {
+        id: "event-1",
+        title: "Node.js Conference",
+        date: "2026-09-20T10:00:00.000Z",
+        totalSeats: 10,
+        availableSeats: 8,
+        createdAt: "2026-08-13T00:00:00.000Z",
+        updatedAt: "2026-08-13T00:00:00.000Z"
+      } satisfies EventDto
+    });
     publisher.publish.mockRejectedValue(new Error("kafka down"));
 
     await expect(consumer.handle(message)).rejects.toThrow("kafka down");
-    expect(repository.markMessageProcessed).not.toHaveBeenCalled();
   });
 
   it("ignores duplicate messages", async () => {
     const message = createMessage();
-    repository.hasProcessedMessage.mockResolvedValue(true);
+    repository.processReserveSeatsMessage.mockResolvedValue({
+      duplicate: true,
+      reserved: false,
+      reason: "DUPLICATE_MESSAGE"
+    });
 
     await consumer.handle(message);
 
-    expect(repository.reserveSeats).not.toHaveBeenCalled();
     expect(cache.del).not.toHaveBeenCalled();
     expect(publisher.publish).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(

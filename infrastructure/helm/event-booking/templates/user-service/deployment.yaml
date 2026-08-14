@@ -46,11 +46,6 @@ spec:
                 configMapKeyRef:
                   name: {{ include "event-booking.fullname" . }}-config
                   key: LOG_LEVEL
-          {{- if .Values.userService.persistence.enabled }}
-          volumeMounts:
-            - name: user-service-data
-              mountPath: {{ .Values.userService.persistence.mountPath }}
-          {{- end }}
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -69,10 +64,4 @@ spec:
             failureThreshold: {{ .Values.userService.probes.liveness.failureThreshold }}
           resources:
             {{- toYaml .Values.userService.resources | nindent 12 }}
-      {{- if .Values.userService.persistence.enabled }}
-      volumes:
-        - name: user-service-data
-          persistentVolumeClaim:
-            claimName: {{ include "event-booking.componentFullname" (dict "root" . "component" "user-service") }}-data
-      {{- end }}
 

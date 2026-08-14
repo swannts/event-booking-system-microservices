@@ -20,7 +20,13 @@ export class BookingReservationConsumer {
   ) {}
 
   async handle(message: MessageEnvelope<ReserveSeatsPayload>): Promise<void> {
-    if (await this.repository.hasProcessedMessage(message.messageId)) {
+    const result = await this.repository.processReserveSeatsMessage({
+      messageId: message.messageId,
+      eventId: message.payload.eventId,
+      quantity: message.payload.quantity
+    });
+
+    if (result.duplicate) {
       this.logger.info(
         {
           messageId: message.messageId,
@@ -32,15 +38,14 @@ export class BookingReservationConsumer {
       return;
     }
 
-    const reserved = await this.repository.reserveSeats(message.payload.eventId, message.payload.quantity);
-
-    if (!reserved) {
+    if (!result.reserved) {
       this.logger.warn(
         {
           messageId: message.messageId,
           bookingId: message.payload.bookingId,
           eventId: message.payload.eventId,
-          quantity: message.payload.quantity
+          quantity: message.payload.quantity,
+          reason: result.reason
         },
         "Insufficient seats for booking reservation"
       );
@@ -52,12 +57,11 @@ export class BookingReservationConsumer {
         payload: {
           bookingId: message.payload.bookingId,
           eventId: message.payload.eventId,
-          reason: "INSUFFICIENT_SEATS"
+          reason: result.reason === "EVENT_NOT_FOUND" ? "EVENT_NOT_FOUND" : "INSUFFICIENT_SEATS"
         }
       };
 
       await this.publisher.publish(Topics.SEAT_RESERVATION_FAILED, failedMessage);
-      await this.repository.markMessageProcessed(message.messageId);
       return;
     }
 
@@ -85,7 +89,6 @@ export class BookingReservationConsumer {
     };
 
     await this.publisher.publish(Topics.SEATS_RESERVED, successMessage);
-    await this.repository.markMessageProcessed(message.messageId);
     this.logger.info(
       {
         messageId: message.messageId,

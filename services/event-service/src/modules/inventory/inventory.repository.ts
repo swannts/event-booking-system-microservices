@@ -28,6 +28,15 @@ export type InventoryDatabaseClient = PrimitiveTransactionClient & {
   $transaction<T>(fn: (tx: PrimitiveTransactionClient) => Promise<T>): Promise<T>;
 };
 
+export type ReserveSeatsResult =
+  | { duplicate: true; reserved: false; reason: "DUPLICATE_MESSAGE" }
+  | { duplicate: false; reserved: true; event: EventDto }
+  | {
+      duplicate: false;
+      reserved: false;
+      reason: "INVALID_QUANTITY" | "EVENT_NOT_FOUND" | "INSUFFICIENT_SEATS";
+    };
+
 export type ReleaseSeatsResult =
   | { duplicate: true; released: false; reason: "DUPLICATE_MESSAGE" }
   | { duplicate: false; released: true; event: EventDto }
@@ -42,6 +51,11 @@ export interface InventoryRepository {
   releaseSeats(eventId: string, quantity: number): Promise<EventDto | null>;
   hasProcessedMessage(messageId: string): Promise<boolean>;
   markMessageProcessed(messageId: string): Promise<void>;
+  processReserveSeatsMessage(input: {
+    messageId: string;
+    eventId: string;
+    quantity: number;
+  }): Promise<ReserveSeatsResult>;
   processReleaseSeatsMessage(input: {
     messageId: string;
     eventId: string;
@@ -131,6 +145,69 @@ export class PrismaInventoryRepository implements InventoryRepository {
         throw error;
       }
     }
+  }
+
+  async processReserveSeatsMessage(input: {
+    messageId: string;
+    eventId: string;
+    quantity: number;
+  }): Promise<ReserveSeatsResult> {
+    return this.db.$transaction(async (tx) => {
+      try {
+        await tx.processedEventMessage.create({
+          data: { messageId: input.messageId }
+        });
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          return {
+            duplicate: true,
+            reserved: false,
+            reason: "DUPLICATE_MESSAGE"
+          } as const;
+        }
+
+        throw error;
+      }
+
+      if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+        return {
+          duplicate: false,
+          reserved: false,
+          reason: "INVALID_QUANTITY"
+        } as const;
+      }
+
+      const rows = await tx.$queryRaw<EventRecord[]>(Prisma.sql`
+        UPDATE events
+        SET available_seats = available_seats - ${input.quantity},
+            updated_at = NOW()
+        WHERE id = ${input.eventId}::uuid
+          AND available_seats >= ${input.quantity}
+        RETURNING
+          id,
+          title,
+          date,
+          total_seats AS "totalSeats",
+          available_seats AS "availableSeats",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+      `);
+
+      if (rows[0]) {
+        return {
+          duplicate: false,
+          reserved: true,
+          event: mapRow(rows[0])
+        } as const;
+      }
+
+      const event = await tx.event.findUnique({ where: { id: input.eventId } });
+      return {
+        duplicate: false,
+        reserved: false,
+        reason: event ? "INSUFFICIENT_SEATS" : "EVENT_NOT_FOUND"
+      } as const;
+    });
   }
 
   async processReleaseSeatsMessage(input: {

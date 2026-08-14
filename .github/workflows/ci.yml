@@ -32,7 +32,7 @@ jobs:
           run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -63,7 +63,7 @@ jobs:
           run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -106,7 +106,7 @@ jobs:
           run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -129,3 +129,24 @@ jobs:
 
       - name: Booking service integration tests
         run: pnpm --dir services/booking-service exec vitest run tests/integration
+
+  helm-lint:
+    name: Helm Lint & Template Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Lint Helm Chart
+        run: helm lint infrastructure/helm/event-booking
+
+      - name: Validate Helm Template
+        run: helm template event-booking infrastructure/helm/event-booking -f infrastructure/helm/event-booking/values-minikube.yaml
+

@@ -10,7 +10,7 @@ import type { EventCache } from "../../src/infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
 import type { InventoryRepository } from "../../src/modules/inventory/inventory.repository";
 
-class FakeRepo implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed"> {
+class FakeRepo implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage"> {
   public processed = new Set<string>();
   public reserved = 0;
   constructor(private readonly shouldReserve: boolean) {}
@@ -35,6 +35,32 @@ class FakeRepo implements Pick<InventoryRepository, "hasProcessedMessage" | "res
 
   async markMessageProcessed(messageId: string) {
     this.processed.add(messageId);
+  }
+
+  async processReserveSeatsMessage(input: { messageId: string; eventId: string; quantity: number }) {
+    if (this.processed.has(input.messageId)) {
+      return { duplicate: true, reserved: false, reason: "DUPLICATE_MESSAGE" } as const;
+    }
+
+    this.processed.add(input.messageId);
+
+    if (!this.shouldReserve) {
+      return { duplicate: false, reserved: false, reason: "INSUFFICIENT_SEATS" } as const;
+    }
+
+    return {
+      duplicate: false,
+      reserved: true,
+      event: {
+        id: input.eventId,
+        title: "Node.js Conference",
+        date: "2026-09-20T10:00:00Z",
+        totalSeats: 10,
+        availableSeats: 5,
+        createdAt: "2026-08-13T00:00:00.000Z",
+        updatedAt: "2026-08-13T00:00:00.000Z"
+      }
+    } as const;
   }
 }
 
