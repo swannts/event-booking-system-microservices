@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: common-config
+data:
+  LOG_LEVEL: "info"
+  PORT_USER_SERVICE: "3000"
+  PORT_EVENT_SERVICE: "3001"
+  PORT_BOOKING_SERVICE: "3002"
+  PORT_NOTIFICATION_SERVICE: "3003"
+  KAFKA_BROKERS: "kafka:9092"
+  REDIS_URL: "redis://redis:6379"

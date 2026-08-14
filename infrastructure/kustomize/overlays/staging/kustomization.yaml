@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: event-booking-staging
+
+resources:
+  - ../../base
+
+patches:
+  - path: patch-env.yaml
+  - path: patch-replicas.yaml
+
+images:
+  - name: event-booking/user-service
+    newTag: staging
+  - name: event-booking/event-service
+    newTag: staging
+  - name: event-booking/booking-service
+    newTag: staging
+  - name: event-booking/notification-service
+    newTag: staging

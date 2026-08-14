@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmaps/common-config.yaml
+  - secrets/common-secrets.yaml
+  - databases/user-db.yaml
+  - databases/event-db.yaml
+  - databases/booking-db.yaml
+  - stateful/redis.yaml
+  - stateful/kafka.yaml
+  - user-service/deployment.yaml
+  - user-service/service.yaml
+  - event-service/deployment.yaml
+  - event-service/service.yaml
+  - booking-service/deployment.yaml
+  - booking-service/service.yaml
+  - notification-service/deployment.yaml
+  - notification-service/service.yaml
