@@ -1,5 +1,4 @@
-import { Topics } from "@event-booking/contracts";
-import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messaging";
+import { KafkaMessagePublisher } from "@event-booking/messaging";
 import { createLogger } from "@event-booking/logger";
 import { createBookingApp } from "./app";
 import { createBookingDatabase } from "./config/database";
@@ -7,38 +6,32 @@ import { createBookingKafkaConfig } from "./config/kafka";
 import { loadBookingServiceEnv } from "./config/env";
 import { PrismaBookingRepository } from "./modules/bookings/booking.repository";
 import { BookingOutboxDispatcher } from "./modules/bookings/booking-outbox.dispatcher";
-import { BookingEventsConsumer } from "./infrastructure/messaging/consumers/seats-reserved.consumer";
 import { BookingController } from "./modules/bookings/booking.controller";
 import { BookingsService } from "./modules/bookings/booking.service";
+import { createBookingMessaging } from "./infrastructure/messaging/messaging.bootstrap";
 
 async function main() {
   const env = loadBookingServiceEnv();
   const logger = createLogger("booking-service");
   const db = createBookingDatabase(env.DATABASE_URL);
   await db.$connect();
+
   const kafkaConfig = createBookingKafkaConfig(env);
   const publisher = new KafkaMessagePublisher(kafkaConfig);
   const repository = new PrismaBookingRepository(db);
   const outboxDispatcher = new BookingOutboxDispatcher(repository, publisher);
   const service = new BookingsService(repository, outboxDispatcher);
   const controller = new BookingController(service);
-  const consumer = new BookingEventsConsumer(repository, publisher);
-  const consumerRunner = new KafkaConsumerRunner(
-    {
-      clientId: kafkaConfig.clientId,
-      brokers: kafkaConfig.brokers,
-      groupId: kafkaConfig.groupId
-    },
-    [
-      { topic: Topics.SEATS_RESERVED, handler: (message) => consumer.handleSeatsReserved(message as never) },
-      {
-        topic: Topics.SEAT_RESERVATION_FAILED,
-        handler: (message) => consumer.handleSeatReservationFailed(message as never)
-      }
-    ]
-  );
-  await consumerRunner.start();
+
+  const messaging = createBookingMessaging({
+    kafkaConfig,
+    repository,
+    publisher
+  });
+
+  await messaging.start();
   outboxDispatcher.start();
+
   const app = await createBookingApp({
     db,
     publisher,
@@ -47,6 +40,7 @@ async function main() {
     service,
     controller
   });
+
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, "Booking service listening");
   });
@@ -55,12 +49,13 @@ async function main() {
     server.close(async () => {
       logger.info("Booking service shutting down");
       outboxDispatcher.stop();
-      await consumerRunner.stop();
+      await messaging.stop();
       await publisher.disconnect();
       await db.$disconnect();
       logger.info("Booking service stopped");
       process.exit(0);
     });
+
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }

@@ -1,5 +1,8 @@
 import type { Prisma, PrismaClient } from "../../../generated/prisma";
 import type { BookingStatus, MessageEnvelope, Topic } from "@event-booking/contracts";
+import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
+
+export type BookingPublisher = MessagePublisher;
 
 export type BookingRecord = {
   id: string;

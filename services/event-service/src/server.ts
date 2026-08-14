@@ -1,5 +1,4 @@
-import { Topics } from "@event-booking/contracts";
-import { KafkaConsumerRunner, KafkaMessagePublisher } from "@event-booking/messaging";
+import { KafkaMessagePublisher } from "@event-booking/messaging";
 import { createLogger } from "@event-booking/logger";
 import { loadEventServiceEnv } from "./config/env";
 import { createEventApp } from "./app";
@@ -11,21 +10,22 @@ import { PrismaEventRepository } from "./modules/events/event.repository";
 import { EventsService } from "./modules/events/event.service";
 import { PrismaInventoryRepository } from "./modules/inventory/inventory.repository";
 import { InventoryService } from "./modules/inventory/inventory.service";
-import { BookingReservationConsumer } from "./infrastructure/messaging/consumers/reserve-seats.consumer";
-import { ReleaseSeatsConsumer } from "./infrastructure/messaging/consumers/release-seats.consumer";
 import { EventOutboxDispatcher } from "./modules/events/event-outbox.dispatcher";
+import { createEventMessaging } from "./infrastructure/messaging/messaging.bootstrap";
 
 async function main() {
   const env = loadEventServiceEnv();
   const logger = createLogger("event-service");
   const db = createEventDatabase(env.DATABASE_URL);
   await db.$connect();
+
   const kafkaConfig = createEventKafkaConfig(env);
   const redis = createEventRedisClient(env.REDIS_URL);
   redis.on("error", (error) => {
     logger.error({ error }, "Redis client error");
   });
   await redis.connect();
+
   const publisher = new KafkaMessagePublisher(kafkaConfig);
   const cache = new RedisEventCache(redis);
   const repository = new PrismaEventRepository(db);
@@ -39,26 +39,12 @@ async function main() {
   const outboxDispatcher = new EventOutboxDispatcher(inventoryRepository, publisher);
   outboxDispatcher.start();
 
-  const consumer = new BookingReservationConsumer(inventoryService);
-  const releaseConsumer = new ReleaseSeatsConsumer(inventoryService);
-  const consumerRunner = new KafkaConsumerRunner(
-    {
-      clientId: kafkaConfig.clientId,
-      brokers: kafkaConfig.brokers,
-      groupId: kafkaConfig.groupId
-    },
-    [
-      {
-        topic: Topics.RESERVE_SEATS,
-        handler: (message) => consumer.handle(message as never)
-      },
-      {
-        topic: Topics.RELEASE_SEATS,
-        handler: (message) => releaseConsumer.handle(message as never)
-      }
-    ]
-  );
-  await consumerRunner.start();
+  const messaging = createEventMessaging({
+    kafkaConfig,
+    inventoryService
+  });
+
+  await messaging.start();
 
   const app = await createEventApp({
     db,
@@ -76,7 +62,7 @@ async function main() {
     server.close(async () => {
       logger.info("Event service shutting down");
       outboxDispatcher.stop();
-      await consumerRunner.stop();
+      await messaging.stop();
       await publisher.disconnect();
       await redis.quit();
       await db.$disconnect();
