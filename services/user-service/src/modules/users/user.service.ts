@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../../../generated/prisma";
 import { UserErrors } from "./user.errors";
 import type { UserDto, UserRepository } from "./user.repository";
 
