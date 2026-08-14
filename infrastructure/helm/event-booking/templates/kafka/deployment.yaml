@@ -61,33 +61,24 @@ spec:
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
           readinessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:{{ .Values.kafka.service.port }}
-            initialDelaySeconds: 15
+            tcpSocket:
+              port: {{ .Values.kafka.service.port }}
+            initialDelaySeconds: 5
             periodSeconds: 10
-            timeoutSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 10
           startupProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:{{ .Values.kafka.service.port }}
-            periodSeconds: 10
-            timeoutSeconds: 10
+            tcpSocket:
+              port: {{ .Values.kafka.service.port }}
+            periodSeconds: 5
+            timeoutSeconds: 5
             failureThreshold: 30
           livenessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:{{ .Values.kafka.service.port }}
-            initialDelaySeconds: 30
+            tcpSocket:
+              port: {{ .Values.kafka.service.port }}
+            initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 10
           resources:
             {{- toYaml .Values.kafka.resources | nindent 12 }}

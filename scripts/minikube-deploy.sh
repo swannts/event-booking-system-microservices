@@ -40,3 +40,22 @@ helm list -n "${NAMESPACE}"
 kubectl -n "${NAMESPACE}" get pods -o wide
 kubectl -n "${NAMESPACE}" get services -o wide
 kubectl -n "${NAMESPACE}" get statefulsets -o wide
+
+echo ""
+echo "=== Starting Port Forwarding for Local API & Postman Testing ==="
+pkill -f "kubectl.*port-forward.*${NAMESPACE}" || true
+
+kubectl -n "${NAMESPACE}" port-forward svc/event-booking-user-service 3000:3000 >/dev/null 2>&1 &
+kubectl -n "${NAMESPACE}" port-forward svc/event-booking-event-service 3001:3001 >/dev/null 2>&1 &
+kubectl -n "${NAMESPACE}" port-forward svc/event-booking-booking-service 3002:3002 >/dev/null 2>&1 &
+kubectl -n "${NAMESPACE}" port-forward svc/event-booking-notification-service 3003:3003 >/dev/null 2>&1 &
+
+sleep 2
+
+echo "Port forwarding active:"
+echo "  - User Service:         http://localhost:3000"
+echo "  - Event Service:        http://localhost:3001"
+echo "  - Booking Service:      http://localhost:3002"
+echo "  - Notification Service: http://localhost:3003"
+echo "Ready for Postman API testing!"
+
