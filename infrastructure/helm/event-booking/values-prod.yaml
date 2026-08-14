@@ -1,0 +1,53 @@
+global:
+  nodeEnv: production
+  logLevel: warn
+
+images:
+  userService:
+    tag: v1.0.0
+  eventService:
+    tag: v1.0.0
+  bookingService:
+    tag: v1.0.0
+  notificationService:
+    tag: v1.0.0
+
+userService:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+eventService:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+bookingService:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+notificationService:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

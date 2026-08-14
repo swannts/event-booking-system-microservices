@@ -1,0 +1,25 @@
+global:
+  nodeEnv: development
+  logLevel: debug
+
+images:
+  userService:
+    tag: dev
+  eventService:
+    tag: dev
+  bookingService:
+    tag: dev
+  notificationService:
+    tag: dev
+
+userService:
+  replicaCount: 1
+
+eventService:
+  replicaCount: 1
+
+bookingService:
+  replicaCount: 1
+
+notificationService:
+  replicaCount: 1

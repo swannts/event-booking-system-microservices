@@ -1,0 +1,25 @@
+global:
+  nodeEnv: staging
+  logLevel: info
+
+images:
+  userService:
+    tag: staging
+  eventService:
+    tag: staging
+  bookingService:
+    tag: staging
+  notificationService:
+    tag: staging
+
+userService:
+  replicaCount: 2
+
+eventService:
+  replicaCount: 2
+
+bookingService:
+  replicaCount: 2
+
+notificationService:
+  replicaCount: 2
