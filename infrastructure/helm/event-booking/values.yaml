@@ -42,7 +42,7 @@ userService:
   port: 3000
   databaseUrl: file:/data/dev.db
   persistence:
-    enabled: true
+    enabled: false
     storageClassName: ""
     accessModes:
       - ReadWriteOnce

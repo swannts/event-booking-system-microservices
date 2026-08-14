@@ -1,27 +1,18 @@
-import fs from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createUserApp } from "../../src/app";
-import { createUserDatabase } from "../../src/config/database";
+import { FakeUserDatabase } from "../mocks/user-db.mock";
 
 type TestContext = {
   app: Awaited<ReturnType<typeof createUserApp>>;
-  db: ReturnType<typeof createUserDatabase>;
-  dbPath: string;
+  db: FakeUserDatabase;
 };
 
 async function createTestContext(): Promise<TestContext> {
-  const dbDir = path.resolve(process.cwd(), ".tmp");
-  fs.mkdirSync(dbDir, { recursive: true });
+  const db = new FakeUserDatabase();
+  const app = await createUserApp({ db: db as any });
 
-  const dbPath = path.join(dbDir, `user-service-${randomUUID()}.db`);
-  const dbUrl = `file:${dbPath}`;
-  const db = createUserDatabase(dbUrl);
-  const app = await createUserApp({ db });
-
-  return { app, db, dbPath };
+  return { app, db };
 }
 
 describe("User routes", () => {
@@ -32,15 +23,10 @@ describe("User routes", () => {
   });
 
   afterEach(async () => {
-    if (!context) {
-      return;
+    if (context) {
+      await context.db.$disconnect();
+      context = null;
     }
-
-    await context.db.$disconnect();
-    fs.rmSync(context.dbPath, { force: true });
-    fs.rmSync(`${context.dbPath}-wal`, { force: true });
-    fs.rmSync(`${context.dbPath}-shm`, { force: true });
-    context = null;
   });
 
   it("creates a user", async () => {

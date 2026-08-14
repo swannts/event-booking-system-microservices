@@ -1,14 +1,13 @@
 import { randomUUID } from "crypto";
 import { describe, expect, it } from "vitest";
 import {
-  Topics,
   type BookingCancelledPayload,
   type BookingConfirmedPayload,
   type BookingFailedPayload,
   type MessageEnvelope
 } from "@event-booking/contracts";
-import { createNotificationConsumer } from "../src/modules/notifications/notification-consumer";
-import { InMemoryNotificationStore } from "../src/infrastructure/notifications/notification-store";
+import { createNotificationConsumer } from "../../src/modules/notifications/notification-consumer";
+import { InMemoryNotificationStore } from "../../src/infrastructure/notifications/notification-store";
 
 function confirmedMessage(): MessageEnvelope<BookingConfirmedPayload> {
   return {
