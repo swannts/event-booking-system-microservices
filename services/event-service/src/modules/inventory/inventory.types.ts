@@ -74,7 +74,13 @@ export type ProcessReserveSeatsInput = {
   eventId: string;
   quantity: number;
   outboxOnSuccess?: { id: string; topic: string; messageId: string; message: unknown };
-  outboxOnFailure?: { id: string; topic: string; messageId: string; message: unknown };
+  outboxOnFailure?: {
+    id: string;
+    topic: string;
+    messageId: string;
+    correlationId: string;
+    bookingId: string;
+  };
 };
 
 export type ProcessReleaseSeatsInput = {

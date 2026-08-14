@@ -114,13 +114,7 @@ export class PrismaInventoryRepository implements InventoryRepository {
     }
   }
 
-  async processReserveSeatsMessage(input: {
-    messageId: string;
-    eventId: string;
-    quantity: number;
-    outboxOnSuccess?: { id: string; topic: string; messageId: string; message: unknown };
-    outboxOnFailure?: { id: string; topic: string; messageId: string; message: unknown };
-  }): Promise<ReserveSeatsResult> {
+  async processReserveSeatsMessage(input: ProcessReserveSeatsInput): Promise<ReserveSeatsResult> {
     return this.db.$transaction(async (tx) => {
       try {
         await tx.processedEventMessage.create({
@@ -195,17 +189,17 @@ export class PrismaInventoryRepository implements InventoryRepository {
 
       if (input.outboxOnFailure) {
         try {
-          const rawMessage = input.outboxOnFailure.message;
-          const outboxMessage =
-            typeof rawMessage === "object" && rawMessage !== null
-              ? {
-                  ...rawMessage,
-                  payload: {
-                    ...(rawMessage as { payload?: Record<string, unknown> }).payload,
-                    reason: failureReason
-                  }
-                }
-              : rawMessage;
+          const outboxMessage = {
+            messageId: input.outboxOnFailure.messageId,
+            correlationId: input.outboxOnFailure.correlationId,
+            timestamp: new Date().toISOString(),
+            version: 1,
+            payload: {
+              bookingId: input.outboxOnFailure.bookingId,
+              eventId: input.eventId,
+              reason: failureReason
+            }
+          };
 
           const outboxRow = await tx.eventOutboxEvent.create({
             data: {

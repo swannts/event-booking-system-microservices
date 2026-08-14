@@ -34,17 +34,6 @@ export class InventoryService {
     };
 
     const failedMessageId = randomUUID();
-    const failedMessage: MessageEnvelope<SeatReservationFailedPayload> = {
-      messageId: failedMessageId,
-      correlationId: message.correlationId,
-      timestamp: new Date().toISOString(),
-      version: 1,
-      payload: {
-        bookingId: message.payload.bookingId,
-        eventId: message.payload.eventId,
-        reason: "INSUFFICIENT_SEATS"
-      }
-    };
 
     const result = await repository.processReserveSeatsMessage({
       messageId: message.messageId,
@@ -60,7 +49,8 @@ export class InventoryService {
         id: randomUUID(),
         topic: Topics.SEAT_RESERVATION_FAILED,
         messageId: failedMessageId,
-        message: failedMessage
+        correlationId: message.correlationId,
+        bookingId: message.payload.bookingId
       }
     });
 
@@ -87,13 +77,19 @@ export class InventoryService {
         },
         "Insufficient seats for booking reservation"
       );
-      const payloadReason = result.reason === "EVENT_NOT_FOUND" ? "EVENT_NOT_FOUND" : "INSUFFICIENT_SEATS";
-      const actualFailedMessage = {
-        ...failedMessage,
-        payload: { ...failedMessage.payload, reason: payloadReason }
+      const failedMessage: MessageEnvelope<SeatReservationFailedPayload> = {
+        messageId: failedMessageId,
+        correlationId: message.correlationId,
+        timestamp: new Date().toISOString(),
+        version: 1,
+        payload: {
+          bookingId: message.payload.bookingId,
+          eventId: message.payload.eventId,
+          reason: result.reason === "EVENT_NOT_FOUND" ? "EVENT_NOT_FOUND" : "INSUFFICIENT_SEATS"
+        }
       };
 
-      await publisher.publish(Topics.SEAT_RESERVATION_FAILED, actualFailedMessage);
+      await publisher.publish(Topics.SEAT_RESERVATION_FAILED, failedMessage);
       if (result.outboxRowId) {
         await repository.markOutboxPublished(result.outboxRowId);
       }
