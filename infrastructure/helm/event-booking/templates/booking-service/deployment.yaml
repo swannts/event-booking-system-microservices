@@ -31,8 +31,8 @@ spec:
           imagePullPolicy: {{ .Values.images.bookingService.pullPolicy }}
           command:
             - sh
-            - -lc
-            - corepack pnpm --dir services/booking-service exec prisma migrate deploy
+            - -c
+            - /app/services/booking-service/node_modules/.bin/prisma migrate deploy --schema /app/services/booking-service/prisma/schema.prisma
           env:
             - name: NODE_ENV
               valueFrom:

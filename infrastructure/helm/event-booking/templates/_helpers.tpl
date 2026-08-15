@@ -16,7 +16,7 @@
 {{- end -}}
 
 {{- define "event-booking.namespace" -}}
-{{- default .Release.Namespace .Values.namespace -}}
+{{- .Release.Namespace -}}
 {{- end -}}
 
 {{- define "event-booking.chart" -}}

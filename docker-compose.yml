@@ -116,8 +116,8 @@ services:
     command:
       [
         "sh",
-        "-lc",
-        "corepack pnpm --dir services/user-service exec prisma migrate deploy"
+        "-c",
+        "/app/services/user-service/node_modules/.bin/prisma migrate deploy --schema /app/services/user-service/prisma/schema.prisma"
       ]
     restart: "no"
 
@@ -170,8 +170,8 @@ services:
     command:
       [
         "sh",
-        "-lc",
-        "corepack pnpm --dir services/event-service exec prisma migrate deploy"
+        "-c",
+        "/app/services/event-service/node_modules/.bin/prisma migrate deploy --schema /app/services/event-service/prisma/schema.prisma"
       ]
     restart: "no"
 
@@ -220,8 +220,8 @@ services:
     command:
       [
         "sh",
-        "-lc",
-        "corepack pnpm --dir services/booking-service exec prisma migrate deploy"
+        "-c",
+        "/app/services/booking-service/node_modules/.bin/prisma migrate deploy --schema /app/services/booking-service/prisma/schema.prisma"
       ]
     restart: "no"
 

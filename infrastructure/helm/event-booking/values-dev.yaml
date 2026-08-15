@@ -5,12 +5,16 @@ global:
 images:
   userService:
     tag: dev
+    pullPolicy: IfNotPresent
   eventService:
     tag: dev
+    pullPolicy: IfNotPresent
   bookingService:
     tag: dev
+    pullPolicy: IfNotPresent
   notificationService:
     tag: dev
+    pullPolicy: IfNotPresent
 
 userService:
   replicaCount: 1

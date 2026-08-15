@@ -31,8 +31,8 @@ spec:
           imagePullPolicy: {{ .Values.images.userService.pullPolicy }}
           command:
             - sh
-            - -lc
-            - corepack pnpm --dir services/user-service exec prisma migrate deploy
+            - -c
+            - /app/services/user-service/node_modules/.bin/prisma migrate deploy --schema /app/services/user-service/prisma/schema.prisma
           env:
             - name: NODE_ENV
               valueFrom:
