@@ -28,7 +28,7 @@ spec:
               containerPort: {{ .Values.userDb.service.port }}
           envFrom:
             - secretRef:
-                name: {{ include "event-booking.fullname" . }}-secret
+                name: {{ include "event-booking.secretName" . }}
           env:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata

@@ -19,6 +19,7 @@ type BookingRow = {
 type IdempotencyRow = {
   key: string;
   bookingId: string;
+  requestFingerprint: string;
   response: unknown;
   createdAt: Date;
 };
@@ -70,13 +71,19 @@ class FakeBookingDatabase implements BookingDatabaseClient {
 
       return null;
     },
-    findMany: async (input?: { where?: { userId?: string }; orderBy?: { createdAt?: "asc" | "desc" } }) => {
+    findMany: async (input?: {
+      where?: { userId?: string };
+      orderBy?: { createdAt?: "asc" | "desc" };
+      skip?: number;
+      take?: number;
+    }) => {
       const rows = [...this.bookings.values()].filter((row) =>
         input?.where?.userId ? row.userId === input.where.userId : true
       );
 
       rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
-      return input?.orderBy?.createdAt === "desc" ? rows.reverse() : rows;
+      const ordered = input?.orderBy?.createdAt === "desc" ? rows.reverse() : rows;
+      return ordered.slice(input?.skip ?? 0, (input?.skip ?? 0) + (input?.take ?? 20));
     },
     update: async ({
       where,
@@ -137,12 +144,14 @@ class FakeBookingDatabase implements BookingDatabaseClient {
       data: {
         key: string;
         bookingId: string;
+        requestFingerprint: string;
         response: unknown;
       };
     }) => {
       const row: IdempotencyRow = {
         key: data.key,
         bookingId: data.bookingId,
+        requestFingerprint: data.requestFingerprint,
         response: data.response,
         createdAt: new Date("2026-08-13T00:00:00.000Z")
       };
@@ -155,8 +164,8 @@ class FakeBookingDatabase implements BookingDatabaseClient {
       create
     }: {
       where: { key: string };
-      update: { bookingId: string; response: unknown };
-      create: { key: string; bookingId: string; response: unknown };
+      update: { bookingId: string; requestFingerprint?: string; response: unknown };
+      create: { key: string; bookingId: string; requestFingerprint: string; response: unknown };
     }) => {
       const existing = this.idempotencyKeys.get(where.key);
       const row: IdempotencyRow = existing
@@ -167,6 +176,7 @@ class FakeBookingDatabase implements BookingDatabaseClient {
         : {
             key: create.key,
             bookingId: create.bookingId,
+            requestFingerprint: create.requestFingerprint,
             response: create.response,
             createdAt: new Date("2026-08-13T00:00:00.000Z")
           };
@@ -210,7 +220,11 @@ class FakeBookingDatabase implements BookingDatabaseClient {
     findUnique: async ({ where }: { where: { id: string } }) => {
       return this.outboxEvents.get(where.id) ?? null;
     },
-    findMany: async (input?: { where?: { status?: "PENDING" | "PUBLISHED" }; orderBy?: { createdAt?: "asc" | "desc" }; take?: number }) => {
+    findMany: async (input?: {
+      where?: { status?: "PENDING" | "PUBLISHED" };
+      orderBy?: { createdAt?: "asc" | "desc" };
+      take?: number;
+    }) => {
       let rows = [...this.outboxEvents.values()];
       if (input?.where?.status) {
         rows = rows.filter((row) => row.status === input.where.status);
@@ -288,6 +302,10 @@ class FakeBookingDatabase implements BookingDatabaseClient {
 
   async $disconnect() {}
 
+  async $queryRaw<T>(): Promise<T> {
+    return [] as T;
+  }
+
   async $transaction<T>(fn: (client: BookingDatabaseClient) => Promise<T>): Promise<T> {
     return fn(this);
   }
@@ -304,7 +322,18 @@ class FakePublisher implements MessagePublisher {
 async function createTestApp() {
   const db = new FakeBookingDatabase();
   const publisher = new FakePublisher();
-  const app = await createBookingApp({ db, publisher });
+  const outboxDispatcher = {
+    dispatchPending: async () => {
+      for (const row of db.outboxEvents.values()) {
+        if (row.status === "PENDING") {
+          await publisher.publish(row.topic, row.message as { payload: unknown });
+          row.status = "PUBLISHED";
+          row.publishedAt = new Date();
+        }
+      }
+    }
+  };
+  const app = await createBookingApp({ db, publisher, outboxDispatcher: outboxDispatcher as never });
   return { app, publisher, db };
 }
 
@@ -332,6 +361,9 @@ describe("Booking Service", () => {
     expect(res.body.status).toBe("PENDING");
     expect(res.headers["x-request-id"]).toBe("req-123");
     expect(publisher.published[0]?.topic).toBe("booking.reserve-seats");
+    expect((await request(app).get("/metrics").expect(200)).text).toContain(
+      'operation="booking_created",outcome="success"'
+    );
   });
 
   it("returns the same booking for the same idempotency key", async () => {
@@ -347,6 +379,27 @@ describe("Booking Service", () => {
     expect(second.body.id).toBe(first.body.id);
   });
 
+  it.each([
+    ["quantity", { quantity: 3 }],
+    ["event", { eventId: "550e8400-e29b-41d4-a716-446655440002" }],
+    ["user", { userId: "550e8400-e29b-41d4-a716-446655440003" }]
+  ])("rejects an idempotency key reused with a different %s", async (_field, change) => {
+    const input = {
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      eventId: "550e8400-e29b-41d4-a716-446655440001",
+      quantity: 2
+    };
+
+    await request(app).post("/bookings").set("Idempotency-Key", "reused-key").send(input).expect(201);
+    const response = await request(app)
+      .post("/bookings")
+      .set("Idempotency-Key", "reused-key")
+      .send({ ...input, ...change })
+      .expect(409);
+
+    expect(response.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+  });
+
   it("rejects cancellation of a non-confirmed booking", async () => {
     const created = await request(app)
       .post("/bookings")
@@ -358,5 +411,35 @@ describe("Booking Service", () => {
       .expect(201);
 
     await request(app).post(`/bookings/${created.body.id}/cancel`).expect(409);
+  });
+
+  it("uses bounded pagination for a user's bookings", async () => {
+    const created = await createTestApp();
+    const payload = {
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      eventId: "550e8400-e29b-41d4-a716-446655440001",
+      quantity: 1
+    };
+    await request(created.app).post("/bookings").send(payload).expect(201);
+    await request(created.app).post("/bookings").send(payload).expect(201);
+
+    expect(
+      (await request(created.app).get(`/bookings/users/${payload.userId}/bookings?page=1&pageSize=1`).expect(200)).body
+    ).toHaveLength(1);
+    expect(
+      (await request(created.app).get(`/bookings/users/${payload.userId}/bookings?page=2&pageSize=1`).expect(200)).body
+    ).toHaveLength(1);
+    await request(created.app).get(`/bookings/users/${payload.userId}/bookings?pageSize=101`).expect(400);
+  });
+
+  it("reports Kafka readiness separately from liveness", async () => {
+    const db = new FakeBookingDatabase();
+    const app = await createBookingApp({ db, kafkaReady: () => false });
+    const readiness = await request(app).get("/health/ready").expect(503);
+    expect(readiness.body).toEqual({
+      status: "not_ready",
+      checks: { database: "ok", outbox: "ok", kafka: "failed" }
+    });
+    await request(app).get("/health/live").expect(200);
   });
 });

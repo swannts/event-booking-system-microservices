@@ -2,6 +2,8 @@ import type { MessageEnvelope, Topic } from "@event-booking/contracts";
 import { createLogger, type AppLogger } from "@event-booking/logger";
 import type { EventOutboxRecord, InventoryRepository } from "../inventory/inventory.repository";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
+import { randomUUID } from "crypto";
+import { observeDomain } from "@event-booking/observability";
 
 function toEnvelope<TPayload>(record: EventOutboxRecord): MessageEnvelope<TPayload> {
   return record.message as MessageEnvelope<TPayload>;
@@ -10,6 +12,7 @@ function toEnvelope<TPayload>(record: EventOutboxRecord): MessageEnvelope<TPaylo
 export class EventOutboxDispatcher {
   private interval: NodeJS.Timeout | null = null;
   private draining = false;
+  private readonly workerId = randomUUID();
 
   constructor(
     private readonly repository: InventoryRepository,
@@ -45,7 +48,12 @@ export class EventOutboxDispatcher {
 
     this.draining = true;
     try {
-      const pending = await this.repository.findPendingOutboxMessages(limit);
+      const pending = await this.repository.claimOutboxMessages({
+        workerId: this.workerId,
+        limit,
+        claimTimeoutSeconds: 60,
+        maxAttempts: 8
+      });
       for (const record of pending) {
         await this.publishRecord(record);
       }
@@ -57,7 +65,8 @@ export class EventOutboxDispatcher {
   private async publishRecord(record: EventOutboxRecord): Promise<void> {
     try {
       await this.publisher.publish(record.topic as Topic, toEnvelope(record));
-      await this.repository.markOutboxPublished(record.id);
+      await this.repository.markOutboxPublished(record.id, this.workerId);
+      observeDomain("event-service", "outbox_publish", "success");
       this.logger.info(
         {
           outboxId: record.id,
@@ -68,6 +77,7 @@ export class EventOutboxDispatcher {
         "Event outbox event published"
       );
     } catch (error) {
+      observeDomain("event-service", "outbox_publish", "failure");
       const message = error instanceof Error ? error.message : "Event outbox publish failed";
       this.logger.error(
         {
@@ -80,7 +90,8 @@ export class EventOutboxDispatcher {
         "Event outbox publish failed"
       );
       try {
-        await this.repository.recordOutboxFailure(record.id, message);
+        const backoffSeconds = Math.min(300, 2 ** Math.max(0, record.attempts - 1));
+        await this.repository.recordOutboxFailure(record.id, this.workerId, message, 8, backoffSeconds);
       } catch {
         // Keep row available for next retry if bookkeeping fails
       }

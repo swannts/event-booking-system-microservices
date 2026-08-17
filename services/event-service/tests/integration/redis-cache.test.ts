@@ -78,17 +78,13 @@ async function waitForDatabase(databaseUrl: string): Promise<void> {
 }
 
 async function applyMigrations(databaseUrl: string): Promise<void> {
-  execFileSync(
-    "corepack",
-    ["pnpm", "prisma:migrate:deploy"],
-    {
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        DATABASE_URL: databaseUrl
-      }
+  execFileSync("corepack", ["pnpm", "prisma:migrate:deploy"], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      DATABASE_URL: databaseUrl
     }
-  );
+  });
 }
 
 describe("redis cache integration", () => {

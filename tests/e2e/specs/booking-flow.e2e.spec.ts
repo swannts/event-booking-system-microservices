@@ -1,20 +1,16 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { randomUUID } from "crypto";
 import { UserClientDriver } from "../drivers/user.driver";
 import { EventClientDriver } from "../drivers/event.driver";
-import { BookingClientDriver } from "../drivers/booking.driver";
-import { NotificationClientDriver } from "../drivers/notification.driver";
-import { prepareE2ECluster, waitFor } from "../helpers/compose-environment";
+import { BookingClientDriver, type BookingResponse } from "../drivers/booking.driver";
+import { NotificationClientDriver, type NotificationItem } from "../drivers/notification.driver";
+import { waitFor } from "../helpers/compose-environment";
 
 describe("E2E Booking Lifecycle Spec", () => {
   const userDriver = new UserClientDriver();
   const eventDriver = new EventClientDriver();
   const bookingDriver = new BookingClientDriver();
   const notificationDriver = new NotificationClientDriver();
-
-  beforeAll(async () => {
-    await prepareE2ECluster();
-  }, 240000);
 
   it("executes complete user creation, event creation, seat booking, and notification receipt flow", async () => {
     // 1. Create User
@@ -49,7 +45,7 @@ describe("E2E Booking Lifecycle Spec", () => {
     expect(booking.status).toBe("PENDING");
 
     // 4. Poll Booking Status until CONFIRMED by Kafka Outbox Processor
-    let confirmedBooking: any;
+    let confirmedBooking: BookingResponse | undefined;
     await waitFor(
       async () => {
         confirmedBooking = await bookingDriver.getBookingById(booking.id);
@@ -67,7 +63,7 @@ describe("E2E Booking Lifecycle Spec", () => {
     expect(updatedEvent.availableSeats).toBe(8);
 
     // 6. Verify Notification Received by Consumer
-    let notification: any;
+    let notification: NotificationItem | undefined;
     await waitFor(
       async () => {
         const notifications = await notificationDriver.listNotifications();

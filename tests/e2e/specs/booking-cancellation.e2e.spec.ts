@@ -1,20 +1,16 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { randomUUID } from "crypto";
 import { BookingClientDriver, type BookingResponse } from "../drivers/booking.driver";
 import { EventClientDriver } from "../drivers/event.driver";
 import { NotificationClientDriver } from "../drivers/notification.driver";
 import { UserClientDriver } from "../drivers/user.driver";
-import { compose, prepareE2ECluster, waitFor } from "../helpers/compose-environment";
+import { compose, waitFor } from "../helpers/compose-environment";
 
 describe("E2E booking cancellation", () => {
   const bookingDriver = new BookingClientDriver();
   const eventDriver = new EventClientDriver();
   const notificationDriver = new NotificationClientDriver();
   const userDriver = new UserClientDriver();
-
-  beforeAll(async () => {
-    await prepareE2ECluster();
-  }, 240000);
 
   async function createConfirmedBooking(totalSeats: number, quantity: number) {
     const user = await userDriver.createUser({
@@ -49,9 +45,7 @@ describe("E2E booking cancellation", () => {
 
   function cancellationOutboxCount(bookingId: string): number {
     const sql = `SELECT COUNT(*) FROM booking_outbox_events WHERE topic = 'booking.cancelled' AND message->'payload'->>'bookingId' = '${bookingId}'`;
-    return Number(
-      compose(["exec", "-T", "booking-db", "psql", "-U", "postgres", "-d", "event_booking", "-Atc", sql])
-    );
+    return Number(compose(["exec", "-T", "booking-db", "psql", "-U", "postgres", "-d", "event_booking", "-Atc", sql]));
   }
 
   it("restores seats exactly once and emits a cancellation notification", async () => {
@@ -60,6 +54,10 @@ describe("E2E booking cancellation", () => {
     const { booking, event } = await createConfirmedBooking(originalCapacity, quantity);
 
     expect((await eventDriver.getEventById(event.id)).availableSeats).toBe(originalCapacity - quantity);
+
+    const rejectedDeletion = await eventDriver.requestDeletion(event.id);
+    expect(rejectedDeletion.response.status).toBe(409);
+    expect(rejectedDeletion.data).toMatchObject({ error: { code: "EVENT_HAS_RESERVATIONS" } });
 
     const cancelled = await bookingDriver.cancelBooking(booking.id);
     expect(cancelled.status).toBe("CANCELLED");
@@ -100,9 +98,7 @@ describe("E2E booking cancellation", () => {
     const quantity = 2;
     const { booking, event } = await createConfirmedBooking(originalCapacity, quantity);
 
-    const attempts = await Promise.all(
-      Array.from({ length: 10 }, () => bookingDriver.requestCancellation(booking.id))
-    );
+    const attempts = await Promise.all(Array.from({ length: 10 }, () => bookingDriver.requestCancellation(booking.id)));
     const successful = attempts.filter(({ response }) => response.status === 200);
     const conflicts = attempts.filter(({ response }) => response.status === 409);
 

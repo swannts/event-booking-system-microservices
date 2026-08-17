@@ -76,6 +76,16 @@ bookingDb:
       cpu: 250m
       memory: 384Mi
 
+notificationDb:
+  size: 1Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      cpu: 250m
+      memory: 384Mi
+
 redis:
   resources:
     requests:
@@ -93,4 +103,3 @@ kafka:
     limits:
       cpu: 1000m
       memory: 1Gi
-

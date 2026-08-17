@@ -58,7 +58,7 @@ describe("Notification consumer", () => {
 
     await consumer.handleBookingConfirmed(confirmedMessage());
 
-    const [notification] = store.list();
+    const [notification] = await store.list();
     expect(notification?.type).toBe("BOOKING_CONFIRMED");
     expect(notification?.message).toBe("Booking confirmed");
   });
@@ -69,7 +69,7 @@ describe("Notification consumer", () => {
 
     await consumer.handleBookingFailed(failedMessage());
 
-    const [notification] = store.list();
+    const [notification] = await store.list();
     expect(notification?.type).toBe("BOOKING_FAILED");
     expect(notification?.reason).toBe("INSUFFICIENT_SEATS");
   });
@@ -82,8 +82,9 @@ describe("Notification consumer", () => {
     await consumer.handleBookingCancelled(message);
     await consumer.handleBookingCancelled(message);
 
-    expect(store.list()).toHaveLength(1);
-    expect(store.list()[0]?.type).toBe("BOOKING_CANCELLED");
-    expect(store.list()[0]?.messageId).toBe(message.messageId);
+    const notifications = await store.list();
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.type).toBe("BOOKING_CANCELLED");
+    expect(notifications[0]?.messageId).toBe(message.messageId);
   });
 });

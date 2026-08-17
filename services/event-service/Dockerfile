@@ -9,16 +9,23 @@ COPY packages ./packages
 COPY services ./services
 
 RUN pnpm install --frozen-lockfile
-RUN pnpm build
+RUN pnpm --filter @event-booking/event-service... build
+RUN pnpm --filter @event-booking/event-service deploy --prod --legacy /runtime
 
 FROM node:22-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--enable-source-maps
 
-COPY --from=builder /app /app
+RUN apk add --no-cache dumb-init
+
+COPY --from=builder --chown=node:node /runtime ./
+
+USER node
 
 EXPOSE 3001
 
-CMD ["node", "services/event-service/dist/server.js"]
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/server.js"]

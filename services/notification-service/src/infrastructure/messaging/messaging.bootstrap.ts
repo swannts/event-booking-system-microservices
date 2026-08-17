@@ -1,5 +1,5 @@
 import { Topics } from "@event-booking/contracts";
-import { KafkaConsumerRunner, type KafkaConsumerConfig } from "@event-booking/messaging";
+import { createKafkaSubscription, KafkaConsumerRunner, type KafkaConsumerConfig } from "@event-booking/messaging";
 import { createNotificationConsumer } from "../../modules/notifications/notification-consumer";
 import type { NotificationSink } from "../../modules/notifications/notification.types";
 
@@ -22,18 +22,9 @@ export function createNotificationMessaging(dependencies: {
       groupId: dependencies.kafkaConfig.groupId
     },
     [
-      {
-        topic: Topics.BOOKING_CONFIRMED,
-        handler: (message) => consumer.handleBookingConfirmed(message as never)
-      },
-      {
-        topic: Topics.BOOKING_FAILED,
-        handler: (message) => consumer.handleBookingFailed(message as never)
-      },
-      {
-        topic: Topics.BOOKING_CANCELLED,
-        handler: (message) => consumer.handleBookingCancelled(message as never)
-      }
+      createKafkaSubscription(Topics.BOOKING_CONFIRMED, (message) => consumer.handleBookingConfirmed(message)),
+      createKafkaSubscription(Topics.BOOKING_FAILED, (message) => consumer.handleBookingFailed(message)),
+      createKafkaSubscription(Topics.BOOKING_CANCELLED, (message) => consumer.handleBookingCancelled(message))
     ]
   );
 

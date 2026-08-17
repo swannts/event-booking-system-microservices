@@ -1,4 +1,5 @@
 import { z } from "zod";
+export { paginationQuerySchema } from "@event-booking/contracts";
 
 export const createBookingSchema = z.object({
   userId: z.string().uuid("Invalid user id"),

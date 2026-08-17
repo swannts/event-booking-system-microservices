@@ -54,8 +54,10 @@ async function main() {
     redisClient: redis,
     rateLimitWindowSeconds: env.RATE_LIMIT_WINDOW_SECONDS,
     rateLimitMaxRequests: env.RATE_LIMIT_MAX_REQUESTS,
+    trustProxy: env.TRUST_PROXY,
     repository,
-    service
+    service,
+    kafkaReady: () => messaging.consumerRunner.isRunning()
   });
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, "Event service listening");

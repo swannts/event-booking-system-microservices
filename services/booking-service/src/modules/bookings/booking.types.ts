@@ -26,7 +26,7 @@ export type BookingDto = {
   updatedAt: string;
 };
 
-export type BookingOutboxStatus = "PENDING" | "PUBLISHED";
+export type BookingOutboxStatus = "PENDING" | "PROCESSING" | "PUBLISHED" | "FAILED";
 
 export type BookingOutboxRecord = {
   id: string;
@@ -35,6 +35,9 @@ export type BookingOutboxRecord = {
   message: Prisma.JsonValue;
   status: BookingOutboxStatus;
   attempts: number;
+  nextAttemptAt: string;
+  claimedAt: string | null;
+  claimedBy: string | null;
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
@@ -42,10 +45,7 @@ export type BookingOutboxRecord = {
 };
 
 export type BookingProcessingFailureReason =
-  | "BOOKING_NOT_FOUND"
-  | "EVENT_MISMATCH"
-  | "QUANTITY_MISMATCH"
-  | "INVALID_STATUS";
+  "BOOKING_NOT_FOUND" | "EVENT_MISMATCH" | "QUANTITY_MISMATCH" | "INVALID_STATUS";
 
 export type ProcessSeatsReservedResult =
   | { duplicate: true; confirmed: false; reason: "DUPLICATE_MESSAGE" }
@@ -110,6 +110,7 @@ export type BookingTransactionalClient = {
     findUnique(input: { where: { key: string } }): Promise<{
       key: string;
       bookingId: string;
+      requestFingerprint: string;
       response: Prisma.JsonValue;
       createdAt: Date;
     } | null>;
@@ -117,16 +118,19 @@ export type BookingTransactionalClient = {
       where: { key: string };
       update: {
         bookingId: string;
+        requestFingerprint?: string;
         response: Prisma.InputJsonValue;
       };
       create: {
         key: string;
         bookingId: string;
+        requestFingerprint: string;
         response: Prisma.InputJsonValue;
       };
     }): Promise<{
       key: string;
       bookingId: string;
+      requestFingerprint: string;
       response: Prisma.JsonValue;
       createdAt: Date;
     }>;
@@ -134,11 +138,13 @@ export type BookingTransactionalClient = {
       data: {
         key: string;
         bookingId: string;
+        requestFingerprint: string;
         response: Prisma.InputJsonValue;
       };
     }): Promise<{
       key: string;
       bookingId: string;
+      requestFingerprint: string;
       response: Prisma.JsonValue;
       createdAt: Date;
     }>;
@@ -148,9 +154,7 @@ export type BookingTransactionalClient = {
       messageId: string;
       processedAt: Date;
     } | null>;
-    create(input: {
-      data: { messageId: string };
-    }): Promise<{
+    create(input: { data: { messageId: string } }): Promise<{
       messageId: string;
       processedAt: Date;
     }>;
@@ -214,6 +218,7 @@ export interface BookingRepository {
       quantity: number;
       status: BookingStatus;
       idempotencyKey: string | null;
+      requestFingerprint: string;
     },
     outbox: {
       id: string;
@@ -222,7 +227,7 @@ export interface BookingRepository {
     }
   ): Promise<BookingDto>;
   findById(id: string): Promise<BookingDto | null>;
-  findByUserId(userId: string): Promise<BookingDto[]>;
+  findByUserId(userId: string, pagination?: { page: number; pageSize: number }): Promise<BookingDto[]>;
   findByIdempotencyKey(key: string): Promise<BookingDto | null>;
   updateStatus(id: string, status: BookingStatus): Promise<BookingDto | null>;
   processSeatsReservedMessage(input: {
@@ -258,12 +263,25 @@ export interface BookingRepository {
   storeIdempotencyKey(input: {
     key: string;
     bookingId: string;
+    requestFingerprint: string;
     response: unknown;
   }): Promise<void>;
   findIdempotencyResponse(key: string): Promise<unknown>;
+  findIdempotencyRecord(key: string): Promise<{ requestFingerprint: string; response: BookingDto } | null>;
   hasProcessedMessage(messageId: string): Promise<boolean>;
   markMessageProcessed(messageId: string): Promise<void>;
-  findPendingOutboxMessages(limit?: number): Promise<BookingOutboxRecord[]>;
-  markOutboxPublished(id: string): Promise<void>;
-  recordOutboxFailure(id: string, error: string): Promise<void>;
+  claimOutboxMessages(input: {
+    workerId: string;
+    limit: number;
+    claimTimeoutSeconds: number;
+    maxAttempts: number;
+  }): Promise<BookingOutboxRecord[]>;
+  markOutboxPublished(id: string, workerId?: string): Promise<void>;
+  recordOutboxFailure(
+    id: string,
+    workerId: string,
+    error: string,
+    maxAttempts: number,
+    backoffSeconds: number
+  ): Promise<void>;
 }

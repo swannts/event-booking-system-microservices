@@ -16,5 +16,5 @@ export interface UserRepository {
   create(input: CreateUserInput): Promise<UserDto>;
   findById(id: string): Promise<UserDto | null>;
   findByEmail(email: string): Promise<UserDto | null>;
-  findAll(): Promise<UserDto[]>;
+  findAll(pagination?: { page: number; pageSize: number }): Promise<UserDto[]>;
 }

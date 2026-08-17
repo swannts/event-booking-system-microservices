@@ -21,7 +21,7 @@ export class PrismaUserRepository implements UserRepository {
       data: {
         id: input.id,
         name: input.name,
-        email: input.email
+        email: input.email.trim().toLowerCase()
       }
     });
 
@@ -34,15 +34,17 @@ export class PrismaUserRepository implements UserRepository {
   }
 
   async findByEmail(email: string): Promise<UserDto | null> {
-    const user = await this.db.user.findUnique({ where: { email } });
+    const user = await this.db.user.findUnique({ where: { email: email.trim().toLowerCase() } });
     return user ? mapRow(user) : null;
   }
 
-  async findAll(): Promise<UserDto[]> {
+  async findAll(
+    { page, pageSize }: { page: number; pageSize: number } = { page: 1, pageSize: 20 }
+  ): Promise<UserDto[]> {
     const users = await this.db.user.findMany({
-      orderBy: {
-        createdAt: "asc"
-      }
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize
     });
 
     return users.map(mapRow);

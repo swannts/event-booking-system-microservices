@@ -38,7 +38,8 @@ async function main() {
     repository,
     outboxDispatcher,
     service,
-    controller
+    controller,
+    kafkaReady: () => messaging.consumerRunner.isRunning()
   });
 
   const server = app.listen(env.PORT, () => {

@@ -10,6 +10,7 @@ import {
 import { createLogger, type AppLogger } from "@event-booking/logger";
 import { InventoryErrors } from "./inventory.errors";
 import type { InventoryDependencies } from "./inventory.types";
+import { observeDomain } from "@event-booking/observability";
 
 export class InventoryService {
   constructor(
@@ -17,8 +18,19 @@ export class InventoryService {
     private readonly logger: AppLogger = createLogger("event-service")
   ) {}
 
+  private async invalidateCache(eventId: string): Promise<void> {
+    try {
+      await this.dependencies.cache.del(eventId);
+    } catch (error) {
+      this.logger.warn(
+        { eventId, error },
+        "Event cache invalidation failed; database result remains authoritative and cache will expire by TTL"
+      );
+    }
+  }
+
   async reserveSeats(message: MessageEnvelope<ReserveSeatsPayload>): Promise<void> {
-    const { repository, cache, publisher } = this.dependencies;
+    const { repository, publisher } = this.dependencies;
 
     const successMessageId = randomUUID();
     const successMessage: MessageEnvelope<SeatsReservedPayload> = {
@@ -67,6 +79,7 @@ export class InventoryService {
     }
 
     if (!result.reserved) {
+      observeDomain("event-service", "seat_reservation", "failure");
       this.logger.warn(
         {
           messageId: message.messageId,
@@ -96,7 +109,8 @@ export class InventoryService {
       return;
     }
 
-    await cache.del(message.payload.eventId);
+    observeDomain("event-service", "seat_reservation", "success");
+    await this.invalidateCache(message.payload.eventId);
     this.logger.info(
       {
         messageId: message.messageId,
@@ -123,7 +137,7 @@ export class InventoryService {
   }
 
   async releaseSeats(message: MessageEnvelope<BookingCancelledPayload>) {
-    const { repository, cache } = this.dependencies;
+    const { repository } = this.dependencies;
 
     if (!Number.isInteger(message.payload.quantity) || message.payload.quantity <= 0) {
       throw InventoryErrors.invalidQuantity();
@@ -136,7 +150,8 @@ export class InventoryService {
     });
 
     if (result.released) {
-      await cache.del(message.payload.eventId);
+      observeDomain("event-service", "seat_release", "success");
+      await this.invalidateCache(message.payload.eventId);
       this.logger.info(
         {
           messageId: message.messageId,
@@ -172,6 +187,7 @@ export class InventoryService {
       },
       "Release seats message rejected"
     );
+    observeDomain("event-service", "seat_release", "failure");
     return result;
   }
 }

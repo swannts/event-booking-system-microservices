@@ -1,8 +1,4 @@
-import {
-  Topics,
-  type MessageEnvelope,
-  type SeatReservationFailedPayload
-} from "@event-booking/contracts";
+import { Topics, type MessageEnvelope, type SeatReservationFailedPayload } from "@event-booking/contracts";
 import type { MessagePublisher } from "../message-publisher";
 
 export async function publishReservationFailed(

@@ -1,18 +1,14 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { randomUUID } from "crypto";
 import { UserClientDriver } from "../drivers/user.driver";
 import { EventClientDriver } from "../drivers/event.driver";
 import { BookingClientDriver } from "../drivers/booking.driver";
-import { prepareE2ECluster, waitFor } from "../helpers/compose-environment";
+import { waitFor } from "../helpers/compose-environment";
 
 describe("E2E Concurrency & Overselling Prevention Spec", () => {
   const userDriver = new UserClientDriver();
   const eventDriver = new EventClientDriver();
   const bookingDriver = new BookingClientDriver();
-
-  beforeAll(async () => {
-    await prepareE2ECluster();
-  }, 240000);
 
   it("prevents seat overselling under high parallel concurrency", async () => {
     // 1. Create User
@@ -42,9 +38,7 @@ describe("E2E Concurrency & Overselling Prevention Spec", () => {
     );
 
     const results = await Promise.all(bookingPromises);
-    const createdBookingIds = results
-      .filter((r) => r.response.status === 201)
-      .map((r) => r.data.id);
+    const createdBookingIds = results.filter((r) => r.response.status === 201).map((r) => r.data.id);
 
     expect(createdBookingIds.length).toBe(totalRequests);
 
@@ -66,7 +60,9 @@ describe("E2E Concurrency & Overselling Prevention Spec", () => {
 
     // 5. Verify final status distribution & seat availability
     const finalBookings = await Promise.all(createdBookingIds.map((id) => bookingDriver.getBookingById(id)));
-    const confirmedCount = finalBookings.filter((b) => b.status === "CONFIRMED").reduce((sum, b) => sum + b.quantity, 0);
+    const confirmedCount = finalBookings
+      .filter((b) => b.status === "CONFIRMED")
+      .reduce((sum, b) => sum + b.quantity, 0);
     const failedCount = finalBookings.filter((b) => b.status === "FAILED").length;
 
     const finalEvent = await eventDriver.getEventById(event.id);

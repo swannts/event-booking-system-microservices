@@ -16,6 +16,8 @@ import { BookingController } from "./modules/bookings/booking.controller";
 import { BookingOutboxDispatcher } from "./modules/bookings/booking-outbox.dispatcher";
 import { createBookingRouter } from "./modules/bookings/booking.routes";
 import { BookingsService } from "./modules/bookings/booking.service";
+import { Prisma } from "../generated/prisma";
+import { httpMetrics, metricsHandler, readinessHandler } from "@event-booking/observability";
 
 export type BookingServiceDependencies = {
   db: BookingDatabaseClient;
@@ -24,6 +26,7 @@ export type BookingServiceDependencies = {
   outboxDispatcher?: BookingOutboxDispatcher;
   service?: BookingsService;
   controller?: BookingController;
+  kafkaReady?: () => boolean;
 };
 
 export async function createBookingApp({
@@ -32,7 +35,8 @@ export async function createBookingApp({
   repository,
   outboxDispatcher,
   service,
-  controller
+  controller,
+  kafkaReady = () => true
 }: BookingServiceDependencies): Promise<Express> {
   const app = express();
   const httpLogger = createHttpLogger("booking-service");
@@ -52,12 +56,24 @@ export async function createBookingApp({
     customProps: httpLogger.customProps
   });
   app.use(httpMiddleware as unknown as RequestHandler);
+  app.use(httpMetrics("booking-service"));
 
   app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
-  app.get("/health/ready", async (_req, res) => {
-    await db.$connect();
-    res.json({ status: "ok" });
-  });
+  app.get(
+    "/health/ready",
+    readinessHandler({
+      database: async () => {
+        await db.$queryRaw(Prisma.sql`SELECT 1`);
+      },
+      outbox: async () => {
+        await db.$queryRaw(Prisma.sql`SELECT 1 FROM booking_outbox_events LIMIT 1`);
+      },
+      kafka: async () => {
+        if (!kafkaReady()) throw new Error("Kafka consumer is not running");
+      }
+    })
+  );
+  app.get("/metrics", metricsHandler);
 
   app.use("/bookings", createBookingRouter(bookingController));
   app.use(notFoundHandler);

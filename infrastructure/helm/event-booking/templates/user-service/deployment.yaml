@@ -27,12 +27,14 @@ spec:
             - -ec
             - until pg_isready -h {{ include "event-booking.componentFqdn" (dict "root" . "component" "user-db") }} -p {{ int .Values.userDb.service.port }} -U {{ .Values.databases.postgres.username }} -d {{ .Values.databases.postgres.database }}; do echo waiting for user-db; sleep 2; done
         - name: migrate-user-db
+          securityContext:
+            {{- toYaml .Values.securityContext.migration | nindent 12 }}
           image: "{{ .Values.images.userService.repository }}:{{ .Values.images.userService.tag }}"
           imagePullPolicy: {{ .Values.images.userService.pullPolicy }}
           command:
             - sh
             - -c
-            - /app/services/user-service/node_modules/.bin/prisma migrate deploy --schema /app/services/user-service/prisma/schema.prisma
+            - /app/node_modules/.bin/prisma migrate deploy --schema /app/prisma/schema.prisma
           env:
             - name: NODE_ENV
               valueFrom:
@@ -42,10 +44,12 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "event-booking.fullname" . }}-secret
+                  name: {{ include "event-booking.secretName" . }}
                   key: USER_DATABASE_URL
       containers:
         - name: user-service
+          securityContext:
+            {{- toYaml .Values.securityContext.application | nindent 12 }}
           image: "{{ .Values.images.userService.repository }}:{{ .Values.images.userService.tag }}"
           imagePullPolicy: {{ .Values.images.userService.pullPolicy }}
           ports:
@@ -65,7 +69,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "event-booking.fullname" . }}-secret
+                  name: {{ include "event-booking.secretName" . }}
                   key: USER_DATABASE_URL
             - name: LOG_LEVEL
               valueFrom:

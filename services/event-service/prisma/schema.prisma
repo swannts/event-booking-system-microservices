@@ -29,7 +29,9 @@ model ProcessedEventMessage {
 
 enum OutboxStatus {
   PENDING
+  PROCESSING
   PUBLISHED
+  FAILED
 }
 
 model EventOutboxEvent {
@@ -39,10 +41,14 @@ model EventOutboxEvent {
   message     Json
   status      OutboxStatus @default(PENDING)
   attempts    Int         @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  claimedAt   DateTime?   @map("claimed_at")
+  claimedBy   String?     @map("claimed_by")
   lastError   String?     @map("last_error")
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
   publishedAt DateTime?   @map("published_at")
 
   @@map("event_outbox_events")
+  @@index([status, nextAttemptAt, createdAt])
 }

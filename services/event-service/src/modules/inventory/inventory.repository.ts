@@ -25,9 +25,20 @@ export interface InventoryRepository {
   markMessageProcessed(messageId: string): Promise<void>;
   processReserveSeatsMessage(input: ProcessReserveSeatsInput): Promise<ReserveSeatsResult>;
   processReleaseSeatsMessage(input: ProcessReleaseSeatsInput): Promise<ReleaseSeatsResult>;
-  findPendingOutboxMessages(limit?: number): Promise<EventOutboxRecord[]>;
-  markOutboxPublished(id: string): Promise<void>;
-  recordOutboxFailure(id: string, error: string): Promise<void>;
+  claimOutboxMessages(input: {
+    workerId: string;
+    limit: number;
+    claimTimeoutSeconds: number;
+    maxAttempts: number;
+  }): Promise<EventOutboxRecord[]>;
+  markOutboxPublished(id: string, workerId?: string): Promise<void>;
+  recordOutboxFailure(
+    id: string,
+    workerId: string,
+    error: string,
+    maxAttempts: number,
+    backoffSeconds: number
+  ): Promise<void>;
 }
 
 function mapRow(row: EventRecord): EventDto {
@@ -43,7 +54,9 @@ function mapRow(row: EventRecord): EventDto {
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002";
+  return (
+    typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002"
+  );
 }
 
 export class PrismaInventoryRepository implements InventoryRepository {
@@ -280,31 +293,83 @@ export class PrismaInventoryRepository implements InventoryRepository {
     });
   }
 
-  async findPendingOutboxMessages(limit = 25): Promise<EventOutboxRecord[]> {
-    return this.db.eventOutboxEvent.findMany({
-      where: { status: "PENDING" },
-      take: limit,
-      orderBy: { createdAt: "asc" }
-    });
+  async claimOutboxMessages(input: {
+    workerId: string;
+    limit: number;
+    claimTimeoutSeconds: number;
+    maxAttempts: number;
+  }): Promise<EventOutboxRecord[]> {
+    return this.db.$queryRaw<EventOutboxRecord[]>(Prisma.sql`
+      WITH claimable AS (
+        SELECT id
+        FROM event_outbox_events
+        WHERE attempts < ${input.maxAttempts}
+          AND (
+            (status = 'PENDING' AND next_attempt_at <= NOW())
+            OR (status = 'PROCESSING' AND claimed_at < NOW() - (${input.claimTimeoutSeconds} * INTERVAL '1 second'))
+          )
+        ORDER BY created_at
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${input.limit}
+      )
+      UPDATE event_outbox_events AS outbox
+      SET status = 'PROCESSING',
+          attempts = outbox.attempts + 1,
+          claimed_at = NOW(),
+          claimed_by = ${input.workerId},
+          last_error = NULL,
+          updated_at = NOW()
+      FROM claimable
+      WHERE outbox.id = claimable.id
+      RETURNING
+        outbox.id,
+        outbox.topic,
+        outbox.message_id AS "messageId",
+        outbox.message,
+        outbox.status,
+        outbox.attempts,
+        outbox.next_attempt_at AS "nextAttemptAt",
+        outbox.claimed_at AS "claimedAt",
+        outbox.claimed_by AS "claimedBy",
+        outbox.last_error AS "lastError",
+        outbox.created_at AS "createdAt",
+        outbox.updated_at AS "updatedAt",
+        outbox.published_at AS "publishedAt"
+    `);
   }
 
-  async markOutboxPublished(id: string): Promise<void> {
-    await this.db.eventOutboxEvent.update({
-      where: { id },
-      data: {
-        status: "PUBLISHED",
-        publishedAt: new Date()
-      }
-    });
+  async markOutboxPublished(id: string, workerId?: string): Promise<void> {
+    await this.db.$executeRaw(Prisma.sql`
+      UPDATE event_outbox_events
+      SET status = 'PUBLISHED',
+          published_at = NOW(),
+          claimed_at = NULL,
+          claimed_by = NULL,
+          last_error = NULL,
+          updated_at = NOW()
+      WHERE id = ${id}::uuid
+        AND (${workerId ?? null}::text IS NULL OR claimed_by = ${workerId ?? null})
+    `);
   }
 
-  async recordOutboxFailure(id: string, error: string): Promise<void> {
-    await this.db.eventOutboxEvent.update({
-      where: { id },
-      data: {
-        attempts: { increment: 1 },
-        lastError: error
-      }
-    });
+  async recordOutboxFailure(
+    id: string,
+    workerId: string,
+    error: string,
+    maxAttempts: number,
+    backoffSeconds: number
+  ): Promise<void> {
+    await this.db.$executeRaw(Prisma.sql`
+      UPDATE event_outbox_events
+      SET status = CASE WHEN attempts >= ${maxAttempts} THEN 'FAILED'::"OutboxStatus" ELSE 'PENDING'::"OutboxStatus" END,
+          next_attempt_at = NOW() + (${backoffSeconds} * INTERVAL '1 second'),
+          claimed_at = NULL,
+          claimed_by = NULL,
+          last_error = ${error},
+          updated_at = NOW()
+      WHERE id = ${id}::uuid
+        AND status = 'PROCESSING'
+        AND claimed_by = ${workerId}
+    `);
   }
 }

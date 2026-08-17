@@ -9,7 +9,7 @@ export class IdempotencyService {
     return response ? (response as BookingDto) : null;
   }
 
-  async storeResponse(key: string, bookingId: string, response: BookingDto): Promise<void> {
-    await this.repository.storeResponse(key, bookingId, response);
+  async storeResponse(key: string, bookingId: string, requestFingerprint: string, response: BookingDto): Promise<void> {
+    await this.repository.storeResponse(key, bookingId, requestFingerprint, response);
   }
 }

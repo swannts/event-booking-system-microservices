@@ -41,6 +41,20 @@ services:
       timeout: 5s
       retries: 10
 
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: event_booking
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d event_booking"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     volumes:
@@ -96,7 +110,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://localhost:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
+          'node -e "fetch(''http://localhost:3000/health/ready'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"'
         ]
       interval: 10s
       timeout: 5s
@@ -113,12 +127,7 @@ services:
     depends_on:
       user-db:
         condition: service_healthy
-    command:
-      [
-        "sh",
-        "-c",
-        "/app/services/user-service/node_modules/.bin/prisma migrate deploy --schema /app/services/user-service/prisma/schema.prisma"
-      ]
+    command: ["sh", "-c", "/app/node_modules/.bin/prisma migrate deploy --schema /app/prisma/schema.prisma"]
     restart: "no"
 
   event-service:
@@ -134,6 +143,7 @@ services:
       KAFKA_CLIENT_ID: event-service
       KAFKA_GROUP_ID: event-service-consumers
       CACHE_TTL_SECONDS: 120
+      TRUST_PROXY: "false"
       LOG_LEVEL: info
     ports:
       - "3001:3001"
@@ -150,7 +160,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://localhost:3001/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
+          'node -e "fetch(''http://localhost:3001/health/ready'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"'
         ]
       interval: 10s
       timeout: 5s
@@ -167,12 +177,7 @@ services:
     depends_on:
       event-db:
         condition: service_healthy
-    command:
-      [
-        "sh",
-        "-c",
-        "/app/services/event-service/node_modules/.bin/prisma migrate deploy --schema /app/services/event-service/prisma/schema.prisma"
-      ]
+    command: ["sh", "-c", "/app/node_modules/.bin/prisma migrate deploy --schema /app/prisma/schema.prisma"]
     restart: "no"
 
   booking-service:
@@ -200,7 +205,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://localhost:3002/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
+          'node -e "fetch(''http://localhost:3002/health/ready'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"'
         ]
       interval: 10s
       timeout: 5s
@@ -217,12 +222,7 @@ services:
     depends_on:
       booking-db:
         condition: service_healthy
-    command:
-      [
-        "sh",
-        "-c",
-        "/app/services/booking-service/node_modules/.bin/prisma migrate deploy --schema /app/services/booking-service/prisma/schema.prisma"
-      ]
+    command: ["sh", "-c", "/app/node_modules/.bin/prisma migrate deploy --schema /app/prisma/schema.prisma"]
     restart: "no"
 
   notification-service:
@@ -232,6 +232,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3003
+      DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/event_booking
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: notification-service
       KAFKA_GROUP_ID: notification-service-consumers
@@ -239,21 +240,39 @@ services:
     ports:
       - "3003:3003"
     depends_on:
+      notification-db:
+        condition: service_healthy
       kafka:
         condition: service_healthy
+      notification-service-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://localhost:3003/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
+          'node -e "fetch(''http://localhost:3003/health/ready'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"'
         ]
       interval: 10s
       timeout: 5s
       retries: 10
     restart: unless-stopped
 
+  notification-service-migrate:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/event_booking
+    depends_on:
+      notification-db:
+        condition: service_healthy
+    command: ["sh", "-c", "/app/node_modules/.bin/prisma migrate deploy --schema /app/prisma/schema.prisma"]
+    restart: "no"
+
 volumes:
   user-db-data:
   event-db-data:
   booking-db-data:
+  notification-db-data:
   redis-data:

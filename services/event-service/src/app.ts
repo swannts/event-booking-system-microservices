@@ -20,6 +20,8 @@ import { InMemoryMessagePublisher } from "./infrastructure/messaging/message-pub
 import { notFoundHandler } from "./middleware/not-found";
 import { createRedisRateLimiter } from "./middleware/rate-limiter";
 import type { EventRedisClient } from "./config/redis";
+import { Prisma } from "../generated/prisma";
+import { httpMetrics, metricsHandler, readinessHandler } from "@event-booking/observability";
 
 export type EventServiceDependencies = {
   db: EventDatabaseClient;
@@ -31,6 +33,8 @@ export type EventServiceDependencies = {
   redisClient?: EventRedisClient;
   rateLimitWindowSeconds?: number;
   rateLimitMaxRequests?: number;
+  trustProxy?: boolean | number | string;
+  kafkaReady?: () => boolean;
 };
 
 export async function createEventApp({
@@ -42,9 +46,12 @@ export async function createEventApp({
   service,
   redisClient,
   rateLimitWindowSeconds = 60,
-  rateLimitMaxRequests = 100
+  rateLimitMaxRequests = 100,
+  trustProxy = false,
+  kafkaReady = () => true
 }: EventServiceDependencies): Promise<Express> {
   const app = express();
+  app.set("trust proxy", trustProxy);
   const httpLogger = createHttpLogger("event-service");
   const eventRepository = repository ?? new PrismaEventRepository(db);
   const eventService = service ?? new EventsService(eventRepository, cache, cacheTtlSeconds);
@@ -62,12 +69,24 @@ export async function createEventApp({
     customProps: httpLogger.customProps
   });
   app.use(httpMiddleware as unknown as RequestHandler);
+  app.use(httpMetrics("event-service"));
 
   app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
-  app.get("/health/ready", async (_req, res) => {
-    await db.$connect();
-    res.json({ status: "ok" });
-  });
+  app.get(
+    "/health/ready",
+    readinessHandler({
+      database: async () => {
+        await db.$queryRaw(Prisma.sql`SELECT 1`);
+      },
+      redis: async () => {
+        if (redisClient) await redisClient.ping();
+      },
+      kafka: async () => {
+        if (!kafkaReady()) throw new Error("Kafka consumer is not running");
+      }
+    })
+  );
+  app.get("/metrics", metricsHandler);
 
   app.use(
     "/events",

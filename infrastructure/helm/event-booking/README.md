@@ -11,6 +11,7 @@ This chart deploys the current event-booking microservices stack into Kubernetes
 - `user-db` PostgreSQL
 - `event-db` PostgreSQL
 - `booking-db` PostgreSQL
+- `notification-db` PostgreSQL
 - `redis`
 - `kafka` in single-node KRaft mode
 
@@ -27,8 +28,33 @@ Each application deployment runs its Prisma migration step in an initContainer b
 - User Service migrates `user-db`
 - Event Service migrates `event-db`
 - Booking Service migrates `booking-db`
+- Notification Service migrates `notification-db`
 
 That keeps fresh installs reproducible without relying on pre-existing tables or a seeded volume.
+
+Existing Prisma-managed installations upgrade with `prisma migrate deploy`; released migration files are immutable and the new migrations only move forward. Take a database backup before production upgrades. The capacity/quantity migrations intentionally fail if pre-existing rows violate the new invariants, so repair invalid legacy data before retrying rather than weakening the constraints.
+
+No baseline step is needed for databases already managed by this repository's `_prisma_migrations` history. For an older database whose schema was created outside Prisma, first compare it to the matching released migration SQL, then mark only migrations that are already structurally present:
+
+```bash
+corepack pnpm --dir services/<service> exec prisma migrate resolve --applied <migration-name>
+corepack pnpm --dir services/<service> exec prisma migrate deploy
+```
+
+Never use `migrate resolve` to skip unapplied SQL. The automated upgrade test uses this command only after applying the prior migration SQL verbatim.
+
+Application containers run as UID/GID 1000 with privilege escalation disabled, all Linux capabilities dropped, and a read-only root filesystem. Prisma migration init containers use the same non-root identity but retain a writable root filesystem because Prisma may need temporary files while applying migrations.
+
+## Production Images and Secrets
+
+`values-prod.yaml` is a production contract, not a local image-loading workflow. Replace each `registry.example.com/...` repository and `sha-000000000000` placeholder with images already pushed to your registry and immutable Git SHA tags.
+
+Production rendering disables the chart-managed demo Secret and expects `event-booking-production-secrets` to exist with these keys:
+
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `USER_DATABASE_URL`, `EVENT_DATABASE_URL`, `BOOKING_DATABASE_URL`, `NOTIFICATION_DATABASE_URL`
+
+Provision that Secret through External Secrets Operator, Vault, a cloud secret manager, SOPS, or Sealed Secrets. Do not commit production credentials in a values file. The default `postgres/postgres` values are explicitly for local/demo environments only.
 
 ## Minikube Images
 
@@ -41,10 +67,12 @@ The Minikube workflow builds these local images into the Minikube Docker daemon:
 
 `values-minikube.yaml` sets `imagePullPolicy: Never` for those images so Kubernetes does not try to pull them from a registry.
 
+This is only a Minikube development convenience. Staging and production deployments must pull prebuilt images from a registry; they must not use `minikube image load` or locally built `:local` tags.
+
 ## Install
 
 ```bash
-./scripts/deploy.sh helm dev
+./scripts/deploy.sh dev
 ```
 
 For local Minikube development:

@@ -2,18 +2,21 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { randomUUID } from "crypto";
 import { EventsService } from "../../src/modules/events/event.service";
 import { EventErrors } from "../../src/modules/events/event.errors";
+import { CapacityBelowReservedSeatsError } from "../../src/modules/events/event.repository";
 import type { EventCache } from "../../src/infrastructure/cache/event-cache";
 import type { EventRepository } from "../../src/modules/events/event.repository";
 
-function createEventDto(overrides: Partial<{
-  id: string;
-  title: string;
-  date: string;
-  totalSeats: number;
-  availableSeats: number;
-  createdAt: string;
-  updatedAt: string;
-}> = {}) {
+function createEventDto(
+  overrides: Partial<{
+    id: string;
+    title: string;
+    date: string;
+    totalSeats: number;
+    availableSeats: number;
+    createdAt: string;
+    updatedAt: string;
+  }> = {}
+) {
   return {
     id: overrides.id ?? randomUUID(),
     title: overrides.title ?? "Node.js Conference",
@@ -94,6 +97,24 @@ describe("EventsService", () => {
     expect(result).toEqual(event);
   });
 
+  it("falls back to the database when cache get fails", async () => {
+    const event = createEventDto();
+    cache.get.mockRejectedValue(new Error("redis unavailable"));
+    repository.findById.mockResolvedValue(event);
+
+    await expect(service.getEventById(event.id)).resolves.toEqual(event);
+    expect(repository.findById).toHaveBeenCalledWith(event.id);
+  });
+
+  it("returns the database result when cache set fails", async () => {
+    const event = createEventDto();
+    cache.get.mockResolvedValue(null);
+    cache.set.mockRejectedValue(new Error("redis unavailable"));
+    repository.findById.mockResolvedValue(event);
+
+    await expect(service.getEventById(event.id)).resolves.toEqual(event);
+  });
+
   it("throws not found when an event does not exist", async () => {
     cache.get.mockResolvedValue(null);
     repository.findById.mockResolvedValue(null);
@@ -130,8 +151,22 @@ describe("EventsService", () => {
     expect(result).toEqual(updated);
   });
 
+  it("keeps a successful database update when cache invalidation fails", async () => {
+    const updated = createEventDto();
+    repository.update.mockResolvedValue(updated);
+    cache.del.mockRejectedValue(new Error("redis unavailable"));
+
+    await expect(
+      service.updateEvent(updated.id, {
+        title: updated.title,
+        date: updated.date,
+        totalSeats: updated.totalSeats
+      })
+    ).resolves.toEqual(updated);
+  });
+
   it("deletes an event and invalidates the cache", async () => {
-    repository.delete.mockResolvedValue(true);
+    repository.delete.mockResolvedValue("DELETED");
 
     await service.deleteEvent("event-1");
 
@@ -139,9 +174,19 @@ describe("EventsService", () => {
     expect(cache.del).toHaveBeenCalledWith("event-1");
   });
 
-  it("rethrows repository validation errors as validation errors", async () => {
+  it("rejects deletion when reservations exist and keeps the cache intact", async () => {
+    repository.delete.mockResolvedValue("HAS_RESERVATIONS");
+
+    await expect(service.deleteEvent("event-1")).rejects.toMatchObject({
+      code: "EVENT_HAS_RESERVATIONS",
+      statusCode: 409
+    });
+    expect(cache.del).not.toHaveBeenCalled();
+  });
+
+  it("returns a conflict when capacity would fall below reserved seats", async () => {
     cache.get.mockResolvedValue(null);
-    repository.update.mockRejectedValue(new Error("AVAILABLE_SEATS_CANNOT_EXCEED_TOTAL_SEATS"));
+    repository.update.mockRejectedValue(new CapacityBelowReservedSeatsError());
 
     await expect(
       service.updateEvent("event-1", {
@@ -150,14 +195,15 @@ describe("EventsService", () => {
         totalSeats: 10
       })
     ).rejects.toMatchObject({
-      code: "VALIDATION_ERROR",
-      message: "availableSeats cannot exceed totalSeats"
+      code: "CAPACITY_BELOW_RESERVED_SEATS",
+      message: "Event capacity cannot be lower than the number of reserved seats",
+      statusCode: 409
     });
   });
 
   it("throws not found when update or delete misses a record", async () => {
     repository.update.mockResolvedValue(null);
-    repository.delete.mockResolvedValue(false);
+    repository.delete.mockResolvedValue("NOT_FOUND");
 
     await expect(
       service.updateEvent("event-1", {

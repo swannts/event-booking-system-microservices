@@ -1,5 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
-import { createBookingSchema, bookingIdParamSchema, userBookingsParamSchema } from "./booking.schema";
+import {
+  createBookingSchema,
+  bookingIdParamSchema,
+  userBookingsParamSchema,
+  paginationQuerySchema
+} from "./booking.schema";
 import { BookingsService } from "./booking.service";
 
 export class BookingController {
@@ -28,7 +33,7 @@ export class BookingController {
   listBookingsForUser = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId } = userBookingsParamSchema.parse(req.params);
-      res.json(await this.service.listBookingsForUser(userId));
+      res.json(await this.service.listBookingsForUser(userId, paginationQuerySchema.parse(req.query)));
     } catch (error) {
       next(error);
     }

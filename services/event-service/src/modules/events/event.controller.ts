@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { createEventSchema, eventIdParamSchema, updateEventSchema } from "./event.schema";
 import { EventsService } from "./event.service";
 import { sendCreated, sendJson, sendNoContent } from "../../utils/response";
+import { paginationQuerySchema } from "@event-booking/contracts";
 
 export class EventController {
   constructor(private readonly service: EventsService) {}
@@ -16,9 +17,9 @@ export class EventController {
     }
   };
 
-  listEvents = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  listEvents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      sendJson(res, 200, await this.service.listEvents());
+      sendJson(res, 200, await this.service.listEvents(paginationQuerySchema.parse(req.query)));
     } catch (error) {
       next(error);
     }

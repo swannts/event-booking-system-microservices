@@ -7,8 +7,9 @@ export class UsersService {
   constructor(private readonly repository: UserRepository) {}
 
   async createUser(input: { name: string; email: string }): Promise<UserDto> {
+    const email = input.email.trim().toLowerCase();
     try {
-      const existing = await this.repository.findByEmail(input.email);
+      const existing = await this.repository.findByEmail(email);
       if (existing) {
         throw UserErrors.duplicateEmail();
       }
@@ -16,7 +17,7 @@ export class UsersService {
       return await this.repository.create({
         id: randomUUID(),
         name: input.name,
-        email: input.email
+        email
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -36,7 +37,7 @@ export class UsersService {
     return user;
   }
 
-  async listUsers(): Promise<UserDto[]> {
-    return this.repository.findAll();
+  async listUsers(pagination: { page: number; pageSize: number } = { page: 1, pageSize: 20 }): Promise<UserDto[]> {
+    return this.repository.findAll(pagination);
   }
 }

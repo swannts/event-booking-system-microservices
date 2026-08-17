@@ -3,9 +3,17 @@
   "version": "0.1.0",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
+  "files": [
+    "dist",
+    "generated",
+    "prisma"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate && tsc -p tsconfig.json && rm -rf dist/generated && cp -R generated dist/generated",
     "dev": "tsx watch src/server.ts",
+    "postinstall": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate",
+    "prisma:migrate:deploy": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma migrate deploy",
+    "prisma:generate": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -13,10 +21,13 @@
     "@event-booking/contracts": "workspace:*",
     "@event-booking/logger": "workspace:*",
     "@event-booking/messaging": "workspace:*",
+    "@event-booking/observability": "workspace:*",
+    "@prisma/client": "^6.16.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "pino-http": "^11.0.0",
+    "prisma": "^6.16.0",
     "zod": "^4.1.8"
   },
   "devDependencies": {

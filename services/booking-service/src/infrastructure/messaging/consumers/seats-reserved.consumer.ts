@@ -10,6 +10,7 @@ import {
 import { createLogger, type AppLogger } from "@event-booking/logger";
 import type { BookingOutboxDispatcher } from "../../../modules/bookings/booking-outbox.dispatcher";
 import type { BookingRepository } from "../../../modules/bookings/booking.repository";
+import { observeDomain } from "@event-booking/observability";
 
 export class BookingEventsConsumer {
   constructor(
@@ -56,6 +57,7 @@ export class BookingEventsConsumer {
     }
 
     if (!result.confirmed) {
+      observeDomain("booking-service", "booking_confirmed", "rejected");
       this.logger.warn(
         {
           messageId: message.messageId,
@@ -68,6 +70,7 @@ export class BookingEventsConsumer {
       return;
     }
 
+    observeDomain("booking-service", "booking_confirmed", "success");
     await this.outboxDispatcher.dispatchPending();
     this.logger.info(
       {
@@ -117,6 +120,7 @@ export class BookingEventsConsumer {
     }
 
     if (!result.failed) {
+      observeDomain("booking-service", "booking_failed", "rejected");
       this.logger.warn(
         {
           messageId: message.messageId,
@@ -129,6 +133,7 @@ export class BookingEventsConsumer {
       return;
     }
 
+    observeDomain("booking-service", "booking_failed", "success");
     await this.outboxDispatcher.dispatchPending();
     this.logger.warn(
       {

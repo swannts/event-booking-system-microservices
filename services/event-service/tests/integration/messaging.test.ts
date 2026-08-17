@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "crypto";
-import {
-  Topics,
-  type MessageEnvelope,
-  type ReserveSeatsPayload
-} from "@event-booking/contracts";
+import { Topics, type MessageEnvelope, type ReserveSeatsPayload, type Topic } from "@event-booking/contracts";
 import { BookingReservationConsumer } from "../../src/infrastructure/messaging/consumers/reserve-seats.consumer";
 import type { EventCache } from "../../src/infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
 import type { InventoryRepository } from "../../src/modules/inventory/inventory.repository";
 
-class FakeRepo implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage"> {
+class FakeRepo implements Pick<
+  InventoryRepository,
+  "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage"
+> {
   public processed = new Set<string>();
   public reserved = 0;
   constructor(private readonly shouldReserve: boolean) {}
@@ -79,7 +78,7 @@ class FakeCache implements EventCache {
 
 class FakePublisher implements MessagePublisher {
   public messages: Array<{ topic: string; message: unknown }> = [];
-  async publish(topic: any, message: any) {
+  async publish<TPayload>(topic: Topic, message: MessageEnvelope<TPayload>) {
     this.messages.push({ topic, message });
   }
 }

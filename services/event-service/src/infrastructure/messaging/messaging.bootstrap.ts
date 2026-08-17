@@ -1,5 +1,5 @@
 import { Topics } from "@event-booking/contracts";
-import { KafkaConsumerRunner, type KafkaConsumerConfig } from "@event-booking/messaging";
+import { createKafkaSubscription, KafkaConsumerRunner, type KafkaConsumerConfig } from "@event-booking/messaging";
 import { BookingReservationConsumer } from "./consumers/reserve-seats.consumer";
 import { ReleaseSeatsConsumer } from "./consumers/release-seats.consumer";
 import type { InventoryService } from "../../modules/inventory/inventory.service";
@@ -24,14 +24,8 @@ export function createEventMessaging(dependencies: {
       groupId: dependencies.kafkaConfig.groupId
     },
     [
-      {
-        topic: Topics.RESERVE_SEATS,
-        handler: (message) => reserveConsumer.handle(message as never)
-      },
-      {
-        topic: Topics.BOOKING_CANCELLED,
-        handler: (message) => releaseConsumer.handle(message as never)
-      }
+      createKafkaSubscription(Topics.RESERVE_SEATS, (message) => reserveConsumer.handle(message)),
+      createKafkaSubscription(Topics.BOOKING_CANCELLED, (message) => releaseConsumer.handle(message))
     ]
   );
 

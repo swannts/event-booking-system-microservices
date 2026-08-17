@@ -9,8 +9,11 @@ export type EventOutboxRecord = {
   topic: string;
   messageId: string;
   message: unknown;
-  status: "PENDING" | "PUBLISHED";
+  status: "PENDING" | "PROCESSING" | "PUBLISHED" | "FAILED";
   attempts: number;
+  nextAttemptAt: Date;
+  claimedAt: Date | null;
+  claimedBy: string | null;
   lastError: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -61,6 +64,7 @@ export type PrimitiveTransactionClient = {
     }): Promise<EventOutboxRecord>;
   };
   $queryRaw<T>(query: TemplateStringsArray | ReturnType<typeof Prisma.sql>): Promise<T>;
+  $executeRaw(query: TemplateStringsArray | ReturnType<typeof Prisma.sql>): Promise<number>;
 };
 
 export type InventoryDatabaseClient = PrimitiveTransactionClient & {

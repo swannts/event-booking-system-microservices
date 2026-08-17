@@ -1,5 +1,5 @@
 import { Topics } from "@event-booking/contracts";
-import { KafkaConsumerRunner, type KafkaConsumerConfig } from "@event-booking/messaging";
+import { createKafkaSubscription, KafkaConsumerRunner, type KafkaConsumerConfig } from "@event-booking/messaging";
 import { BookingEventsConsumer } from "./consumers/seats-reserved.consumer";
 import type { BookingRepository } from "../../modules/bookings/booking.repository";
 import type { BookingOutboxDispatcher } from "../../modules/bookings/booking-outbox.dispatcher";
@@ -23,14 +23,10 @@ export function createBookingMessaging(dependencies: {
       groupId: dependencies.kafkaConfig.groupId
     },
     [
-      {
-        topic: Topics.SEATS_RESERVED,
-        handler: (message) => consumer.handleSeatsReserved(message as never)
-      },
-      {
-        topic: Topics.SEAT_RESERVATION_FAILED,
-        handler: (message) => consumer.handleSeatReservationFailed(message as never)
-      }
+      createKafkaSubscription(Topics.SEATS_RESERVED, (message) => consumer.handleSeatsReserved(message)),
+      createKafkaSubscription(Topics.SEAT_RESERVATION_FAILED, (message) =>
+        consumer.handleSeatReservationFailed(message)
+      )
     ]
   );
 

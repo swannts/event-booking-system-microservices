@@ -47,4 +47,10 @@ export class EventClientDriver {
     }
     return await res.json();
   }
+
+  async requestDeletion(id: string): Promise<{ response: Response; data: unknown }> {
+    const response = await fetch(`${this.baseUrl}/events/${id}`, { method: "DELETE" });
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
+  }
 }

@@ -12,8 +12,6 @@ export type NotificationRecord = {
 };
 
 export interface NotificationSink {
-  append(record: NotificationRecord): Promise<void>;
-  list(): NotificationRecord[];
-  hasProcessedMessage(messageId: string): Promise<boolean>;
-  markProcessed(messageId: string): Promise<void>;
+  appendIfUnprocessed(record: NotificationRecord): Promise<boolean>;
+  list(pagination?: { page: number; pageSize: number }): Promise<NotificationRecord[]>;
 }

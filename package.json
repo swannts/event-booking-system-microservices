@@ -7,11 +7,21 @@
     "build": "corepack pnpm -r --sort run build",
     "test": "corepack pnpm -r --sort run build && corepack pnpm -r --sort run test",
     "test:e2e": "corepack pnpm --dir services/event-service exec vitest --config ../../vitest.e2e.config.ts run",
-    "typecheck": "corepack pnpm -r --sort run typecheck",
+    "test:migrations": "corepack pnpm exec vitest --config vitest.migrations.config.ts run",
+    "test:load": "k6 run tests/load/booking-load.js",
+    "test:load:smoke": "k6 run -e PROFILE=smoke tests/load/booking-load.js",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "typecheck": "corepack pnpm --filter './packages/**' --sort run build && corepack pnpm -r --sort run typecheck",
     "dev": "corepack pnpm --filter @event-booking/user-service dev"
   },
   "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "eslint": "^9.35.0",
+    "prettier": "^3.6.2",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.42.0",
     "vitest": "^3.2.7"
   }
 }

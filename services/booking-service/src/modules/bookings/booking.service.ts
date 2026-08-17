@@ -9,6 +9,8 @@ import { createLogger, type AppLogger } from "@event-booking/logger";
 import type { BookingDto, BookingRepository } from "./booking.types";
 import { BookingErrors } from "./booking.errors";
 import type { BookingOutboxDispatcher } from "./booking-outbox.dispatcher";
+import { createBookingRequestFingerprint } from "../idempotency/request-fingerprint";
+import { observeDomain } from "@event-booking/observability";
 
 export class BookingsService {
   constructor(
@@ -23,18 +25,22 @@ export class BookingsService {
     quantity: number;
     idempotencyKey?: string | null;
   }): Promise<BookingDto> {
+    const requestFingerprint = createBookingRequestFingerprint(input);
     if (input.idempotencyKey) {
-      const existing = await this.repository.findIdempotencyResponse(input.idempotencyKey);
+      const existing = await this.repository.findIdempotencyRecord(input.idempotencyKey);
       if (existing) {
+        if (existing.requestFingerprint !== requestFingerprint) {
+          throw BookingErrors.idempotencyKeyReused();
+        }
         this.logger.info(
           {
-            bookingId: (existing as BookingDto).id,
-            eventId: (existing as BookingDto).eventId,
+            bookingId: existing.response.id,
+            eventId: existing.response.eventId,
             idempotencyKey: input.idempotencyKey
           },
           "Booking request replayed via idempotency key"
         );
-        return existing as BookingDto;
+        return existing.response;
       }
     }
 
@@ -46,7 +52,8 @@ export class BookingsService {
         eventId: input.eventId,
         quantity: input.quantity,
         status: "PENDING",
-        idempotencyKey: input.idempotencyKey ?? null
+        idempotencyKey: input.idempotencyKey ?? null,
+        requestFingerprint
       },
       {
         id: randomUUID(),
@@ -66,6 +73,10 @@ export class BookingsService {
         } satisfies MessageEnvelope<ReserveSeatsPayload>
       }
     );
+
+    if (booking.id === bookingId) {
+      observeDomain("booking-service", "booking_created", "success");
+    }
 
     this.logger.info(
       {
@@ -89,8 +100,11 @@ export class BookingsService {
     return booking;
   }
 
-  async listBookingsForUser(userId: string): Promise<BookingDto[]> {
-    return this.repository.findByUserId(userId);
+  async listBookingsForUser(
+    userId: string,
+    pagination: { page: number; pageSize: number } = { page: 1, pageSize: 20 }
+  ): Promise<BookingDto[]> {
+    return this.repository.findByUserId(userId, pagination);
   }
 
   async cancelBooking(id: string): Promise<BookingDto> {
@@ -130,6 +144,7 @@ export class BookingsService {
       throw BookingErrors.invalidStatus();
     }
     const cancelledBooking = cancelled.booking;
+    observeDomain("booking-service", "booking_cancelled", "success");
     this.logger.info(
       {
         bookingId: cancelledBooking.id,

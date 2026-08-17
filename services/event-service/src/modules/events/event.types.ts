@@ -1,4 +1,5 @@
 import type { Event as EventModel } from "../../../generated/prisma";
+import type { Prisma } from "../../../generated/prisma";
 import type { EventCache } from "../../infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../../infrastructure/messaging/message-publisher";
 
@@ -30,9 +31,11 @@ export type UpdateEventInput = {
 
 export type EventDatabaseClient = {
   event: {
-    create(input: { data: { id: string; title: string; date: Date; totalSeats: number; availableSeats: number } }): Promise<EventRecord>;
+    create(input: {
+      data: { id: string; title: string; date: Date; totalSeats: number; availableSeats: number };
+    }): Promise<EventRecord>;
     findUnique(input: { where: { id: string } }): Promise<EventRecord | null>;
-    findMany(input?: { orderBy?: { createdAt?: "asc" | "desc" } }): Promise<EventRecord[]>;
+    findMany(input?: unknown): Promise<EventRecord[]>;
     update(input: {
       where: { id: string };
       data: {
@@ -51,6 +54,7 @@ export type EventDatabaseClient = {
       };
     }): Promise<{ count: number }>;
   };
+  $queryRaw<T>(query: ReturnType<typeof Prisma.sql>): Promise<T>;
   $connect(): Promise<void>;
   $disconnect(): Promise<void>;
 };
@@ -58,9 +62,9 @@ export type EventDatabaseClient = {
 export interface EventRepository {
   create(input: CreateEventInput): Promise<EventDto>;
   findById(id: string): Promise<EventDto | null>;
-  list(): Promise<EventDto[]>;
+  list(pagination?: { page: number; pageSize: number }): Promise<EventDto[]>;
   update(id: string, input: UpdateEventInput): Promise<EventDto | null>;
-  delete(id: string): Promise<boolean>;
+  delete(id: string): Promise<"DELETED" | "NOT_FOUND" | "HAS_RESERVATIONS">;
 }
 
 export type EventDependencies = {

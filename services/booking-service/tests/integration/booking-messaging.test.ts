@@ -52,7 +52,10 @@ function createReservationFailedMessage(): MessageEnvelope<SeatReservationFailed
   };
 }
 
-class FakeRepo implements Pick<BookingRepository, "processSeatsReservedMessage" | "processSeatReservationFailedMessage"> {
+class FakeRepo implements Pick<
+  BookingRepository,
+  "processSeatsReservedMessage" | "processSeatReservationFailedMessage"
+> {
   public readonly booking: BookingState = {
     id: "booking-1",
     userId: "user-1",
@@ -77,7 +80,11 @@ class FakeRepo implements Pick<BookingRepository, "processSeatsReservedMessage" 
 
     this.processed.add(input.messageId);
 
-    if (this.booking.id !== input.bookingId || this.booking.eventId !== input.eventId || this.booking.quantity !== input.quantity) {
+    if (
+      this.booking.id !== input.bookingId ||
+      this.booking.eventId !== input.eventId ||
+      this.booking.quantity !== input.quantity
+    ) {
       return { duplicate: false, confirmed: false, reason: "INVALID_STATUS" };
     }
 
@@ -109,7 +116,11 @@ class FakeRepo implements Pick<BookingRepository, "processSeatsReservedMessage" 
 
     this.processed.add(input.messageId);
 
-    if (this.booking.id !== input.bookingId || this.booking.eventId !== input.eventId || this.booking.status !== "PENDING") {
+    if (
+      this.booking.id !== input.bookingId ||
+      this.booking.eventId !== input.eventId ||
+      this.booking.status !== "PENDING"
+    ) {
       return { duplicate: false, failed: false, reason: "INVALID_STATUS" };
     }
 

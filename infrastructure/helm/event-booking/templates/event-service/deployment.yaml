@@ -27,12 +27,14 @@ spec:
             - -ec
             - until pg_isready -h {{ include "event-booking.componentFqdn" (dict "root" . "component" "event-db") }} -p {{ int .Values.eventDb.service.port }} -U {{ .Values.databases.postgres.username }} -d {{ .Values.databases.postgres.database }}; do echo waiting for event-db; sleep 2; done
         - name: migrate-event-db
+          securityContext:
+            {{- toYaml .Values.securityContext.migration | nindent 12 }}
           image: "{{ .Values.images.eventService.repository }}:{{ .Values.images.eventService.tag }}"
           imagePullPolicy: {{ .Values.images.eventService.pullPolicy }}
           command:
             - sh
             - -c
-            - /app/services/event-service/node_modules/.bin/prisma migrate deploy --schema /app/services/event-service/prisma/schema.prisma
+            - /app/node_modules/.bin/prisma migrate deploy --schema /app/prisma/schema.prisma
           env:
             - name: NODE_ENV
               valueFrom:
@@ -42,7 +44,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "event-booking.fullname" . }}-secret
+                  name: {{ include "event-booking.secretName" . }}
                   key: EVENT_DATABASE_URL
         - name: wait-for-redis
           image: "{{ .Values.images.redis.repository }}:{{ .Values.images.redis.tag }}"
@@ -60,6 +62,8 @@ spec:
             - until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server {{ include "event-booking.componentFqdn" (dict "root" . "component" "kafka") }}:{{ int .Values.kafka.service.port }} >/dev/null 2>&1; do echo waiting for kafka; sleep 2; done
       containers:
         - name: event-service
+          securityContext:
+            {{- toYaml .Values.securityContext.application | nindent 12 }}
           image: "{{ .Values.images.eventService.repository }}:{{ .Values.images.eventService.tag }}"
           imagePullPolicy: {{ .Values.images.eventService.pullPolicy }}
           ports:
@@ -79,7 +83,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "event-booking.fullname" . }}-secret
+                  name: {{ include "event-booking.secretName" . }}
                   key: EVENT_DATABASE_URL
             - name: REDIS_URL
               valueFrom:
@@ -116,6 +120,11 @@ spec:
                 configMapKeyRef:
                   name: {{ include "event-booking.fullname" . }}-config
                   key: RATE_LIMIT_MAX_REQUESTS
+            - name: TRUST_PROXY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: TRUST_PROXY
             - name: LOG_LEVEL
               valueFrom:
                 configMapKeyRef:

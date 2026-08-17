@@ -2,7 +2,7 @@ import type { BookingRepository } from "../bookings/booking.repository";
 
 export interface IdempotencyRepository {
   findResponse(key: string): Promise<unknown | null>;
-  storeResponse(key: string, bookingId: string, response: unknown): Promise<void>;
+  storeResponse(key: string, bookingId: string, requestFingerprint: string, response: unknown): Promise<void>;
 }
 
 export class BookingIdempotencyRepository implements IdempotencyRepository {
@@ -12,10 +12,11 @@ export class BookingIdempotencyRepository implements IdempotencyRepository {
     return this.repository.findIdempotencyResponse(key);
   }
 
-  async storeResponse(key: string, bookingId: string, response: unknown): Promise<void> {
+  async storeResponse(key: string, bookingId: string, requestFingerprint: string, response: unknown): Promise<void> {
     await this.repository.storeIdempotencyKey({
       key,
       bookingId,
+      requestFingerprint,
       response
     });
   }

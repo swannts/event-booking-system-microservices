@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "../../../generated/prisma";
+import { Prisma } from "../../../generated/prisma";
 import type { MessageEnvelope, Topic } from "@event-booking/contracts";
 import type { BookingStatus } from "@event-booking/contracts";
 import type {
@@ -14,6 +14,7 @@ import type {
   BookingRepository,
   BookingTransactionalClient
 } from "./booking.types";
+import { BookingErrors } from "./booking.errors";
 
 export type {
   CancelBookingResult,
@@ -49,6 +50,9 @@ function mapOutboxRow(row: {
   message: Prisma.JsonValue;
   status: BookingOutboxStatus;
   attempts: number;
+  nextAttemptAt: Date;
+  claimedAt: Date | null;
+  claimedBy: string | null;
   lastError: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -61,6 +65,9 @@ function mapOutboxRow(row: {
     message: row.message,
     status: row.status,
     attempts: row.attempts,
+    nextAttemptAt: row.nextAttemptAt.toISOString(),
+    claimedAt: row.claimedAt?.toISOString() ?? null,
+    claimedBy: row.claimedBy,
     lastError: row.lastError,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -69,7 +76,9 @@ function mapOutboxRow(row: {
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "P2002");
+  return Boolean(
+    error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "P2002"
+  );
 }
 
 function serializeError(error: unknown): string {
@@ -140,6 +149,7 @@ export class PrismaBookingRepository implements BookingRepository {
       quantity: number;
       status: BookingStatus;
       idempotencyKey: string | null;
+      requestFingerprint: string;
     },
     outbox: {
       id: string;
@@ -166,6 +176,7 @@ export class PrismaBookingRepository implements BookingRepository {
             data: {
               key: input.idempotencyKey,
               bookingId: booking.id,
+              requestFingerprint: input.requestFingerprint,
               response: mapRow(booking)
             }
           });
@@ -188,9 +199,12 @@ export class PrismaBookingRepository implements BookingRepository {
       });
     } catch (error) {
       if (isUniqueConstraintError(error) && input.idempotencyKey) {
-        const existing = await this.findIdempotencyResponse(input.idempotencyKey);
-        if (existing && typeof existing === "object" && existing !== null && "id" in existing) {
-          return existing as BookingDto;
+        const existing = await this.findIdempotencyRecord(input.idempotencyKey);
+        if (existing) {
+          if (existing.requestFingerprint !== input.requestFingerprint) {
+            throw BookingErrors.idempotencyKeyReused();
+          }
+          return existing.response;
         }
 
         const booking = await this.findByIdempotencyKey(input.idempotencyKey);
@@ -208,10 +222,15 @@ export class PrismaBookingRepository implements BookingRepository {
     return booking ? mapRow(booking) : null;
   }
 
-  async findByUserId(userId: string): Promise<BookingDto[]> {
+  async findByUserId(
+    userId: string,
+    { page, pageSize }: { page: number; pageSize: number } = { page: 1, pageSize: 20 }
+  ): Promise<BookingDto[]> {
     const bookings = await this.db.booking.findMany({
       where: { userId },
-      orderBy: { createdAt: "asc" }
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize
     });
 
     return bookings.map(mapRow);
@@ -328,7 +347,12 @@ export class PrismaBookingRepository implements BookingRepository {
 
       const booking = await transactional.booking.findUnique({ where: { id: input.bookingId } });
 
-      if (updateResult.count === 0 || !booking || booking.eventId !== input.eventId || booking.quantity !== input.quantity) {
+      if (
+        updateResult.count === 0 ||
+        !booking ||
+        booking.eventId !== input.eventId ||
+        booking.quantity !== input.quantity
+      ) {
         return {
           duplicate: false,
           confirmed: false,
@@ -438,17 +462,20 @@ export class PrismaBookingRepository implements BookingRepository {
   async storeIdempotencyKey(input: {
     key: string;
     bookingId: string;
+    requestFingerprint: string;
     response: unknown;
   }): Promise<void> {
     await this.db.bookingIdempotencyKey.upsert({
       where: { key: input.key },
       update: {
         bookingId: input.bookingId,
+        requestFingerprint: input.requestFingerprint,
         response: input.response as Prisma.InputJsonValue
       },
       create: {
         key: input.key,
         bookingId: input.bookingId,
+        requestFingerprint: input.requestFingerprint,
         response: input.response as Prisma.InputJsonValue
       }
     });
@@ -457,6 +484,18 @@ export class PrismaBookingRepository implements BookingRepository {
   async findIdempotencyResponse(key: string): Promise<unknown | null> {
     const record = await this.db.bookingIdempotencyKey.findUnique({ where: { key } });
     return record?.response ?? null;
+  }
+
+  async findIdempotencyRecord(key: string): Promise<{ requestFingerprint: string; response: BookingDto } | null> {
+    const record = await this.db.bookingIdempotencyKey.findUnique({ where: { key } });
+    if (!record) {
+      return null;
+    }
+
+    return {
+      requestFingerprint: record.requestFingerprint,
+      response: record.response as unknown as BookingDto
+    };
   }
 
   async hasProcessedMessage(messageId: string): Promise<boolean> {
@@ -472,40 +511,101 @@ export class PrismaBookingRepository implements BookingRepository {
     });
   }
 
-  async findPendingOutboxMessages(limit = 25): Promise<BookingOutboxRecord[]> {
-    const events = await this.db.bookingOutboxEvent.findMany({
-      where: { status: "PENDING" },
-      orderBy: { createdAt: "asc" },
-      take: limit
-    });
+  async claimOutboxMessages(input: {
+    workerId: string;
+    limit: number;
+    claimTimeoutSeconds: number;
+    maxAttempts: number;
+  }): Promise<BookingOutboxRecord[]> {
+    const events = await this.db.$queryRaw<
+      Array<{
+        id: string;
+        topic: string;
+        messageId: string;
+        message: Prisma.JsonValue;
+        status: BookingOutboxStatus;
+        attempts: number;
+        nextAttemptAt: Date;
+        claimedAt: Date | null;
+        claimedBy: string | null;
+        lastError: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        publishedAt: Date | null;
+      }>
+    >(Prisma.sql`
+      WITH claimable AS (
+        SELECT id
+        FROM booking_outbox_events
+        WHERE attempts < ${input.maxAttempts}
+          AND (
+            (status = 'PENDING' AND next_attempt_at <= NOW())
+            OR (status = 'PROCESSING' AND claimed_at < NOW() - (${input.claimTimeoutSeconds} * INTERVAL '1 second'))
+          )
+        ORDER BY created_at
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${input.limit}
+      )
+      UPDATE booking_outbox_events AS outbox
+      SET status = 'PROCESSING',
+          attempts = outbox.attempts + 1,
+          claimed_at = NOW(),
+          claimed_by = ${input.workerId},
+          last_error = NULL,
+          updated_at = NOW()
+      FROM claimable
+      WHERE outbox.id = claimable.id
+      RETURNING
+        outbox.id,
+        outbox.topic,
+        outbox.message_id AS "messageId",
+        outbox.message,
+        outbox.status,
+        outbox.attempts,
+        outbox.next_attempt_at AS "nextAttemptAt",
+        outbox.claimed_at AS "claimedAt",
+        outbox.claimed_by AS "claimedBy",
+        outbox.last_error AS "lastError",
+        outbox.created_at AS "createdAt",
+        outbox.updated_at AS "updatedAt",
+        outbox.published_at AS "publishedAt"
+    `);
 
     return events.map(mapOutboxRow);
   }
 
-  async markOutboxPublished(id: string): Promise<void> {
-    await this.db.bookingOutboxEvent.update({
-      where: { id },
-      data: {
-        status: "PUBLISHED",
-        publishedAt: new Date(),
-        lastError: null
-      }
-    });
+  async markOutboxPublished(id: string, workerId?: string): Promise<void> {
+    await this.db.$executeRaw(Prisma.sql`
+      UPDATE booking_outbox_events
+      SET status = 'PUBLISHED',
+          published_at = NOW(),
+          claimed_at = NULL,
+          claimed_by = NULL,
+          last_error = NULL,
+          updated_at = NOW()
+      WHERE id = ${id}::uuid
+        AND (${workerId ?? null}::text IS NULL OR claimed_by = ${workerId ?? null})
+    `);
   }
 
-  async recordOutboxFailure(id: string, error: string): Promise<void> {
-    const existing = await this.db.bookingOutboxEvent.findUnique({ where: { id } });
-    if (!existing) {
-      return;
-    }
-
-    await this.db.bookingOutboxEvent.update({
-      where: { id },
-      data: {
-        attempts: existing.attempts + 1,
-        lastError: serializeError(error),
-        status: "PENDING"
-      }
-    });
+  async recordOutboxFailure(
+    id: string,
+    workerId: string,
+    error: string,
+    maxAttempts: number,
+    backoffSeconds: number
+  ): Promise<void> {
+    await this.db.$executeRaw(Prisma.sql`
+      UPDATE booking_outbox_events
+      SET status = CASE WHEN attempts >= ${maxAttempts} THEN 'FAILED'::"OutboxStatus" ELSE 'PENDING'::"OutboxStatus" END,
+          next_attempt_at = NOW() + (${backoffSeconds} * INTERVAL '1 second'),
+          claimed_at = NULL,
+          claimed_by = NULL,
+          last_error = ${serializeError(error)},
+          updated_at = NOW()
+      WHERE id = ${id}::uuid
+        AND status = 'PROCESSING'
+        AND claimed_by = ${workerId}
+    `);
   }
 }

@@ -30,6 +30,9 @@ class FakeRepo {
       message: createEnvelope(),
       status: "PENDING",
       attempts: 0,
+      nextAttemptAt: "2026-08-13T00:00:00.000Z",
+      claimedAt: null,
+      claimedBy: null,
       lastError: null,
       createdAt: "2026-08-13T00:00:00.000Z",
       updatedAt: "2026-08-13T00:00:00.000Z",
@@ -37,25 +40,35 @@ class FakeRepo {
     }
   ];
 
-  async findPendingOutboxMessages(limit = 25) {
-    return this.events.filter((event) => event.status === "PENDING").slice(0, limit);
+  async claimOutboxMessages(input: { workerId: string; limit: number }) {
+    const claimed = this.events.filter((event) => event.status === "PENDING").slice(0, input.limit);
+    for (const event of claimed) {
+      event.status = "PROCESSING";
+      event.attempts += 1;
+      event.claimedBy = input.workerId;
+      event.claimedAt = new Date().toISOString();
+    }
+    return claimed;
   }
 
-  async markOutboxPublished(id: string) {
+  async markOutboxPublished(id: string, workerId: string) {
     const event = this.events.find((entry) => entry.id === id);
-    if (event) {
+    if (event?.claimedBy === workerId) {
       event.status = "PUBLISHED";
       event.publishedAt = new Date().toISOString();
       event.lastError = null;
+      event.claimedBy = null;
+      event.claimedAt = null;
     }
   }
 
-  async recordOutboxFailure(id: string, error: string) {
+  async recordOutboxFailure(id: string, workerId: string, error: string) {
     const event = this.events.find((entry) => entry.id === id);
-    if (event) {
-      event.attempts += 1;
+    if (event?.claimedBy === workerId) {
       event.lastError = error;
       event.status = "PENDING";
+      event.claimedBy = null;
+      event.claimedAt = null;
     }
   }
 }

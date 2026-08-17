@@ -111,14 +111,22 @@ export function teardown(data) {
   let bookings = [];
 
   while (Date.now() < deadline) {
-    const response = http.get(`${baseUrls.bookings}/bookings/users/${data.userId}/bookings`, {
-      tags: { operation: "verify_bookings" }
-    });
-    if (response.status === 200) {
-      bookings = response.json();
-      if (bookings.length > 0 && bookings.every((booking) => ["CONFIRMED", "FAILED"].includes(booking.status))) {
+    bookings = [];
+    for (let page = 1; ; page += 1) {
+      const response = http.get(
+        `${baseUrls.bookings}/bookings/users/${data.userId}/bookings?page=${page}&pageSize=100`,
+        { tags: { operation: "verify_bookings" } }
+      );
+      if (response.status !== 200) {
+        bookings = [];
         break;
       }
+      const batch = response.json();
+      bookings.push(...batch);
+      if (batch.length < 100) break;
+    }
+    if (bookings.length > 0 && bookings.every((booking) => ["CONFIRMED", "FAILED"].includes(booking.status))) {
+      break;
     }
     sleep(0.5);
   }
@@ -130,7 +138,8 @@ export function teardown(data) {
   const confirmedQuantity = bookings
     .filter((booking) => booking.status === "CONFIRMED")
     .reduce((sum, booking) => sum + booking.quantity, 0);
-  const allTerminal = bookings.length > 0 && bookings.every((booking) => ["CONFIRMED", "FAILED"].includes(booking.status));
+  const allTerminal =
+    bookings.length > 0 && bookings.every((booking) => ["CONFIRMED", "FAILED"].includes(booking.status));
 
   const invariantHolds = check(eventResponse, {
     "all bookings reached a terminal state": () => allTerminal,

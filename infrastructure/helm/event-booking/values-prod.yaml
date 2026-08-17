@@ -4,13 +4,21 @@ global:
 
 images:
   userService:
-    tag: v1.0.0
+    repository: registry.example.com/event-booking/user-service
+    tag: sha-000000000000
   eventService:
-    tag: v1.0.0
+    repository: registry.example.com/event-booking/event-service
+    tag: sha-000000000000
   bookingService:
-    tag: v1.0.0
+    repository: registry.example.com/event-booking/booking-service
+    tag: sha-000000000000
   notificationService:
-    tag: v1.0.0
+    repository: registry.example.com/event-booking/notification-service
+    tag: sha-000000000000
+
+secrets:
+  create: false
+  existingSecret: event-booking-production-secrets
 
 userService:
   replicaCount: 3

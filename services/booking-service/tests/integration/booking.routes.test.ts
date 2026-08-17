@@ -130,12 +130,16 @@ describe("BookingController", () => {
     const res = createResponseMock();
     const next = vi.fn() as NextFunction;
     const req = {
-      params: { userId: "550e8400-e29b-41d4-a716-446655440000" }
+      params: { userId: "550e8400-e29b-41d4-a716-446655440000" },
+      query: {}
     } as unknown as Request;
 
     await controller.listBookingsForUser(req, res, next);
 
-    expect(service.listBookingsForUser).toHaveBeenCalledWith("550e8400-e29b-41d4-a716-446655440000");
+    expect(service.listBookingsForUser).toHaveBeenCalledWith("550e8400-e29b-41d4-a716-446655440000", {
+      page: 1,
+      pageSize: 20
+    });
     expect(res.json).toHaveBeenCalledWith(bookings);
     expect(next).not.toHaveBeenCalled();
   });

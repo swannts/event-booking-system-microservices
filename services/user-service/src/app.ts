@@ -11,6 +11,7 @@ import { PrismaUserRepository } from "./modules/users/user.repository";
 import { UserController } from "./modules/users/user.controller";
 import type { UserDatabase } from "./config/database";
 import { notFoundHandler } from "./middleware/not-found";
+import { httpMetrics, metricsHandler, readinessHandler } from "@event-booking/observability";
 
 export type UserServiceDependencies = {
   db: UserDatabase;
@@ -34,15 +35,21 @@ export async function createUserApp({ db }: UserServiceDependencies): Promise<Ex
     customProps: httpLogger.customProps
   });
   app.use(httpMiddleware as unknown as RequestHandler);
+  app.use(httpMetrics("user-service"));
 
   app.get("/health/live", (_req, res) => {
     res.json({ status: "ok" });
   });
 
-  app.get("/health/ready", async (_req, res) => {
-    await db.$connect();
-    res.json({ status: "ok" });
-  });
+  app.get(
+    "/health/ready",
+    readinessHandler({
+      database: async () => {
+        await db.$queryRaw`SELECT 1`;
+      }
+    })
+  );
+  app.get("/metrics", metricsHandler);
 
   app.use("/users", createUserRouter(controller));
   app.use(notFoundHandler);

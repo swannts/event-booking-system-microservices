@@ -7,6 +7,28 @@ global:
   nodeEnv: production
   logLevel: info
 
+secrets:
+  create: true
+  existingSecret: ""
+
+securityContext:
+  application:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  migration:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+
 images:
   userService:
     repository: event-booking/user-service
@@ -65,6 +87,7 @@ eventService:
   cacheTtlSeconds: 120
   rateLimitWindowSeconds: 60
   rateLimitMaxRequests: 100
+  trustProxy: true
   resources:
     requests:
       cpu: 100m
@@ -165,6 +188,21 @@ eventDb:
       memory: 512Mi
 
 bookingDb:
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 2Gi
+  service:
+    port: 5432
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+notificationDb:
   storageClassName: ""
   accessModes:
     - ReadWriteOnce

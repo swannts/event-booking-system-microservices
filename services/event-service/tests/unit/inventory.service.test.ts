@@ -5,7 +5,6 @@ import { BookingReservationConsumer } from "../../src/infrastructure/messaging/c
 import type { EventCache } from "../../src/infrastructure/cache/event-cache";
 import type { MessagePublisher } from "../../src/infrastructure/messaging/message-publisher";
 import type { InventoryRepository } from "../../src/modules/inventory/inventory.repository";
-import { InventoryErrors } from "../../src/modules/inventory/inventory.errors";
 
 type EventDto = {
   id: string;
@@ -17,7 +16,9 @@ type EventDto = {
   updatedAt: string;
 };
 
-function createMessage(overrides: Partial<MessageEnvelope<ReserveSeatsPayload>> = {}): MessageEnvelope<ReserveSeatsPayload> {
+function createMessage(
+  overrides: Partial<MessageEnvelope<ReserveSeatsPayload>> = {}
+): MessageEnvelope<ReserveSeatsPayload> {
   const eventId = overrides.payload?.eventId ?? "event-1";
   const bookingId = overrides.payload?.bookingId ?? "booking-1";
 
@@ -37,7 +38,10 @@ function createMessage(overrides: Partial<MessageEnvelope<ReserveSeatsPayload>> 
 
 import { InventoryService } from "../../src/modules/inventory/inventory.service";
 
-class FakeRepository implements Pick<InventoryRepository, "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage" | "markOutboxPublished"> {
+class FakeRepository implements Pick<
+  InventoryRepository,
+  "hasProcessedMessage" | "reserveSeats" | "markMessageProcessed" | "processReserveSeatsMessage" | "markOutboxPublished"
+> {
   public hasProcessedMessage = vi.fn();
   public reserveSeats = vi.fn();
   public markMessageProcessed = vi.fn();
@@ -170,6 +174,27 @@ describe("BookingReservationConsumer & InventoryService", () => {
     publisher.publish.mockRejectedValue(new Error("kafka down"));
 
     await expect(consumer.handle(message)).rejects.toThrow("kafka down");
+  });
+
+  it("publishes a successful reservation when cache invalidation fails", async () => {
+    const message = createMessage();
+    repository.processReserveSeatsMessage.mockResolvedValue({
+      duplicate: false,
+      reserved: true,
+      event: {
+        id: "event-1",
+        title: "Node.js Conference",
+        date: "2026-09-20T10:00:00.000Z",
+        totalSeats: 10,
+        availableSeats: 8,
+        createdAt: "2026-08-13T00:00:00.000Z",
+        updatedAt: "2026-08-13T00:00:00.000Z"
+      }
+    });
+    cache.del.mockRejectedValue(new Error("redis unavailable"));
+
+    await expect(consumer.handle(message)).resolves.toBeUndefined();
+    expect(publisher.publish).toHaveBeenCalledWith(Topics.SEATS_RESERVED, expect.any(Object));
   });
 
   it("ignores duplicate messages", async () => {

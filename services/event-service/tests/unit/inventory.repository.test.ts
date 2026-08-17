@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { randomUUID } from "crypto";
 import { Topics } from "@event-booking/contracts";
 import { Prisma } from "../../../generated/prisma";
-import { PrismaInventoryRepository, type InventoryDatabaseClient } from "../../src/modules/inventory/inventory.repository";
+import {
+  PrismaInventoryRepository,
+  type InventoryDatabaseClient
+} from "../../src/modules/inventory/inventory.repository";
 import type { EventRecord } from "../../src/modules/events/event.repository";
 
 type EventRow = EventRecord;
@@ -95,7 +98,8 @@ class FakeInventoryDatabase implements InventoryDatabaseClient {
       this.processedMessages.set(row.messageId, row);
       return row;
     },
-    findUnique: async ({ where }: { where: { messageId: string } }) => this.processedMessages.get(where.messageId) ?? null
+    findUnique: async ({ where }: { where: { messageId: string } }) =>
+      this.processedMessages.get(where.messageId) ?? null
   };
 
   public readonly eventOutboxEvent = {
@@ -164,7 +168,9 @@ class FakeInventoryDatabase implements InventoryDatabaseClient {
   async $disconnect() {}
 
   async $queryRaw<T>(query: TemplateStringsArray | ReturnType<typeof Prisma.sql>): Promise<T> {
-    const values = Array.isArray((query as { values?: unknown[] }).values) ? ((query as { values: unknown[] }).values as unknown[]) : [];
+    const values = Array.isArray((query as { values?: unknown[] }).values)
+      ? ((query as { values: unknown[] }).values as unknown[])
+      : [];
     const quantity = Number(values[0] ?? 0);
     const eventId = String(values[1] ?? "");
     const row = this.events.get(eventId);
@@ -187,7 +193,15 @@ class FakeInventoryDatabase implements InventoryDatabaseClient {
       events: new Map([...this.events.entries()].map(([key, value]) => [key, cloneEvent(value)])),
       processedMessages: new Map(this.processedMessages),
       outboxEvents: new Map(
-        [...this.outboxEvents.entries()].map(([key, value]) => [key, { ...value, createdAt: new Date(value.createdAt), updatedAt: new Date(value.updatedAt), publishedAt: value.publishedAt ? new Date(value.publishedAt) : null }])
+        [...this.outboxEvents.entries()].map(([key, value]) => [
+          key,
+          {
+            ...value,
+            createdAt: new Date(value.createdAt),
+            updatedAt: new Date(value.updatedAt),
+            publishedAt: value.publishedAt ? new Date(value.publishedAt) : null
+          }
+        ])
       ),
       failOutboxCreate: this.failOutboxCreate
     };

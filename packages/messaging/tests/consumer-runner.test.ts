@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { randomUUID } from "crypto";
 import { Topics } from "@event-booking/contracts";
-import {
-  createKafkaSubscription,
-  PermanentMessageError,
-  processKafkaRecord,
-  type DeadLetterRecord
-} from "../src";
+import { createKafkaSubscription, PermanentMessageError, processKafkaRecord, type DeadLetterRecord } from "../src";
 
 function validMessage() {
   return {

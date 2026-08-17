@@ -18,7 +18,9 @@ enum BookingStatus {
 
 enum OutboxStatus {
   PENDING
+  PROCESSING
   PUBLISHED
+  FAILED
 }
 
 model Booking {
@@ -35,10 +37,11 @@ model Booking {
 }
 
 model BookingIdempotencyKey {
-  key        String   @id
-  bookingId  String   @unique @map("booking_id")
-  response   Json
-  createdAt  DateTime @default(now()) @map("created_at")
+  key                String   @id
+  bookingId          String   @unique @map("booking_id")
+  requestFingerprint String   @map("request_fingerprint")
+  response           Json
+  createdAt          DateTime @default(now()) @map("created_at")
 
   @@map("booking_idempotency_keys")
 }
@@ -57,10 +60,14 @@ model BookingOutboxEvent {
   message      Json
   status       OutboxStatus  @default(PENDING)
   attempts     Int          @default(0)
+  nextAttemptAt DateTime    @default(now()) @map("next_attempt_at")
+  claimedAt    DateTime?    @map("claimed_at")
+  claimedBy    String?      @map("claimed_by")
   lastError    String?      @map("last_error")
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
   publishedAt  DateTime?    @map("published_at")
 
   @@map("booking_outbox_events")
+  @@index([status, nextAttemptAt, createdAt])
 }

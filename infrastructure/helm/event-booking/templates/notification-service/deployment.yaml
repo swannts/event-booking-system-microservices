@@ -19,6 +19,33 @@ spec:
         app.kubernetes.io/component: notification-service
     spec:
       initContainers:
+        - name: wait-for-notification-db
+          image: "{{ .Values.images.postgres.repository }}:{{ .Values.images.postgres.tag }}"
+          imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
+          command:
+            - sh
+            - -ec
+            - until pg_isready -h {{ include "event-booking.componentFqdn" (dict "root" . "component" "notification-db") }} -p {{ int .Values.notificationDb.service.port }} -U {{ .Values.databases.postgres.username }} -d {{ .Values.databases.postgres.database }}; do echo waiting for notification-db; sleep 2; done
+        - name: migrate-notification-db
+          securityContext:
+            {{- toYaml .Values.securityContext.migration | nindent 12 }}
+          image: "{{ .Values.images.notificationService.repository }}:{{ .Values.images.notificationService.tag }}"
+          imagePullPolicy: {{ .Values.images.notificationService.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - /app/node_modules/.bin/prisma migrate deploy --schema /app/prisma/schema.prisma
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "event-booking.fullname" . }}-config
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "event-booking.secretName" . }}
+                  key: NOTIFICATION_DATABASE_URL
         - name: wait-for-kafka
           image: "{{ .Values.images.kafka.repository }}:{{ .Values.images.kafka.tag }}"
           imagePullPolicy: {{ .Values.images.kafka.pullPolicy }}
@@ -28,6 +55,8 @@ spec:
             - until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server {{ include "event-booking.componentFqdn" (dict "root" . "component" "kafka") }}:{{ int .Values.kafka.service.port }} >/dev/null 2>&1; do echo waiting for kafka; sleep 2; done
       containers:
         - name: notification-service
+          securityContext:
+            {{- toYaml .Values.securityContext.application | nindent 12 }}
           image: "{{ .Values.images.notificationService.repository }}:{{ .Values.images.notificationService.tag }}"
           imagePullPolicy: {{ .Values.images.notificationService.pullPolicy }}
           ports:
@@ -44,6 +73,11 @@ spec:
                 configMapKeyRef:
                   name: {{ include "event-booking.fullname" . }}-config
                   key: NOTIFICATION_PORT
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "event-booking.secretName" . }}
+                  key: NOTIFICATION_DATABASE_URL
             - name: KAFKA_BROKERS
               valueFrom:
                 configMapKeyRef:

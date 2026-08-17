@@ -1,4 +1,4 @@
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
 
 const ROOT_DIR = process.cwd();
 const COMPOSE_CMD = ["compose"];
@@ -11,6 +11,14 @@ export function compose(args: string[], options: { stdio?: "pipe" | "inherit" | 
   });
 
   return typeof output === "string" ? output.trim() : "";
+}
+
+export function composeAsync(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile("docker", [...COMPOSE_CMD, ...args], { cwd: ROOT_DIR, maxBuffer: 10 * 1024 * 1024 }, (error) =>
+      error ? reject(error) : resolve()
+    );
+  });
 }
 
 export async function waitFor(
@@ -47,7 +55,11 @@ export async function waitForHealth(port: number, timeoutMs = 180000): Promise<v
   );
 }
 
-export async function waitForComposeServiceHealth(service: string, command: string[], timeoutMs = 180000): Promise<void> {
+export async function waitForComposeServiceHealth(
+  service: string,
+  command: string[],
+  timeoutMs = 180000
+): Promise<void> {
   await waitFor(
     async () => {
       try {
@@ -64,17 +76,12 @@ export async function waitForComposeServiceHealth(service: string, command: stri
 }
 
 export async function prepareE2ECluster(): Promise<void> {
-  compose(["down", "-v", "--remove-orphans"]);
-  compose(["up", "-d", "--build"]);
+  await composeAsync(["down", "-v", "--remove-orphans"]);
+  await composeAsync(["up", "-d", "--build"]);
   await waitForComposeServiceHealth("user-db", ["pg_isready", "-U", "postgres", "-d", "event_booking"]);
   await waitForComposeServiceHealth("event-db", ["pg_isready", "-U", "postgres", "-d", "event_booking"]);
   await waitForComposeServiceHealth("booking-db", ["pg_isready", "-U", "postgres", "-d", "event_booking"]);
   await waitForComposeServiceHealth("redis", ["redis-cli", "ping"]);
 
-  await Promise.all([
-    waitForHealth(3000),
-    waitForHealth(3001),
-    waitForHealth(3002),
-    waitForHealth(3003)
-  ]);
+  await Promise.all([waitForHealth(3000), waitForHealth(3001), waitForHealth(3002), waitForHealth(3003)]);
 }

@@ -17,6 +17,7 @@ type BookingRow = {
 type IdempotencyRow = {
   key: string;
   bookingId: string;
+  requestFingerprint: string;
   response: unknown;
   createdAt: Date;
 };
@@ -34,7 +35,12 @@ type OutboxRow = {
   publishedAt: Date | null;
 };
 
-function createEnvelope(bookingId: string, eventId: string, userId: string, quantity: number): MessageEnvelope<ReserveSeatsPayload> {
+function createEnvelope(
+  bookingId: string,
+  eventId: string,
+  userId: string,
+  quantity: number
+): MessageEnvelope<ReserveSeatsPayload> {
   return {
     messageId: randomUUID(),
     correlationId: bookingId,
@@ -135,8 +141,8 @@ class FakeBookingDatabase implements BookingDatabaseClient {
       create
     }: {
       where: { key: string };
-      update: { bookingId: string; response: unknown };
-      create: { key: string; bookingId: string; response: unknown };
+      update: { bookingId: string; requestFingerprint?: string; response: unknown };
+      create: { key: string; bookingId: string; requestFingerprint: string; response: unknown };
     }) => {
       const existing = this.idempotencyKeys.get(where.key);
       const row: IdempotencyRow = existing
@@ -144,6 +150,7 @@ class FakeBookingDatabase implements BookingDatabaseClient {
         : {
             key: create.key,
             bookingId: create.bookingId,
+            requestFingerprint: create.requestFingerprint,
             response: create.response,
             createdAt: new Date("2026-08-13T00:00:00.000Z")
           };
@@ -151,10 +158,15 @@ class FakeBookingDatabase implements BookingDatabaseClient {
       this.idempotencyKeys.set(row.key, row);
       return row;
     },
-    create: async ({ data }: { data: { key: string; bookingId: string; response: unknown } }) => {
+    create: async ({
+      data
+    }: {
+      data: { key: string; bookingId: string; requestFingerprint: string; response: unknown };
+    }) => {
       const row: IdempotencyRow = {
         key: data.key,
         bookingId: data.bookingId,
+        requestFingerprint: data.requestFingerprint,
         response: data.response,
         createdAt: new Date("2026-08-13T00:00:00.000Z")
       };
@@ -278,7 +290,8 @@ describe("PrismaBookingRepository", () => {
         eventId: "event-1",
         quantity: 2,
         status: "PENDING",
-        idempotencyKey: "idempotency-key-1"
+        idempotencyKey: "idempotency-key-1",
+        requestFingerprint: "v1:user-1:event-1:2"
       },
       {
         id: randomUUID(),
@@ -290,6 +303,7 @@ describe("PrismaBookingRepository", () => {
     expect(booking.id).toBe(bookingId);
     expect(db.bookings.has(bookingId)).toBe(true);
     expect(db.idempotencyKeys.get("idempotency-key-1")?.bookingId).toBe(bookingId);
+    expect(db.idempotencyKeys.get("idempotency-key-1")?.requestFingerprint).toBe("v1:user-1:event-1:2");
     expect(db.outboxEvents.size).toBe(1);
     expect([...db.outboxEvents.values()][0]?.topic).toBe(Topics.RESERVE_SEATS);
   });

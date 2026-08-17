@@ -18,7 +18,10 @@ export type BookingResponse = {
 export class BookingClientDriver {
   constructor(private readonly baseUrl = "http://127.0.0.1:3002") {}
 
-  async createBooking(payload: CreateBookingPayload, idempotencyKey?: string): Promise<{ response: Response; data: any }> {
+  async createBooking(
+    payload: CreateBookingPayload,
+    idempotencyKey?: string
+  ): Promise<{ response: Response; data: BookingResponse }> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (idempotencyKey) {
       headers["Idempotency-Key"] = idempotencyKey;
@@ -30,7 +33,7 @@ export class BookingClientDriver {
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json().catch(() => ({}));
+    const data = (await response.json().catch(() => ({}))) as BookingResponse;
     return { response, data };
   }
 
@@ -51,12 +54,18 @@ export class BookingClientDriver {
   }
 
   async cancelBooking(id: string): Promise<BookingResponse> {
-    const res = await fetch(`${this.baseUrl}/bookings/${id}/cancel`, {
+    const { response, data } = await this.requestCancellation(id);
+    if (!response.ok) {
+      throw new Error(`Failed to cancel booking (${response.status})`);
+    }
+    return data as BookingResponse;
+  }
+
+  async requestCancellation(id: string): Promise<{ response: Response; data: unknown }> {
+    const response = await fetch(`${this.baseUrl}/bookings/${id}/cancel`, {
       method: "POST"
     });
-    if (!res.ok) {
-      throw new Error(`Failed to cancel booking (${res.status})`);
-    }
-    return await res.json();
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
   }
 }

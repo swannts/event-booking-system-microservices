@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { sendCreated, sendOk } from "../../utils/response";
 import { createUserSchema, userIdParamSchema } from "./user.schema";
 import type { UsersService } from "./user.service";
+import { paginationQuerySchema } from "@event-booking/contracts";
 
 export class UserController {
   constructor(private readonly service: UsersService) {}
@@ -16,9 +17,9 @@ export class UserController {
     }
   };
 
-  listUsers = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  listUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const users = await this.service.listUsers();
+      const users = await this.service.listUsers(paginationQuerySchema.parse(req.query));
       sendOk(res, users);
     } catch (error) {
       next(error);

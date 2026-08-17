@@ -3,7 +3,9 @@ import type { NotificationDatabase } from "../../config/database";
 import type { NotificationRecord, NotificationSink } from "../../modules/notifications/notification.types";
 
 function isUniqueConstraintError(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "P2002");
+  return Boolean(
+    error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "P2002"
+  );
 }
 
 export class PrismaNotificationRepository implements NotificationSink {
@@ -36,8 +38,14 @@ export class PrismaNotificationRepository implements NotificationSink {
     }
   }
 
-  async list(): Promise<NotificationRecord[]> {
-    const rows = await this.db.notification.findMany({ orderBy: { createdAt: "asc" } });
+  async list(
+    { page = 1, pageSize = 20 }: { page: number; pageSize: number } = { page: 1, pageSize: 20 }
+  ): Promise<NotificationRecord[]> {
+    const rows = await this.db.notification.findMany({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    });
     return rows.map((row) => ({
       timestamp: row.occurredAt.toISOString(),
       service: "notification-service",

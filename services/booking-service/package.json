@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
+  "files": [
+    "dist",
+    "generated",
+    "prisma"
+  ],
   "scripts": {
     "build": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/event_booking} prisma generate && tsc -p tsconfig.json && rm -rf dist/generated && cp -R generated dist/generated",
     "dev": "tsx watch src/server.ts",
@@ -16,11 +21,13 @@
     "@event-booking/contracts": "workspace:*",
     "@event-booking/logger": "workspace:*",
     "@event-booking/messaging": "workspace:*",
+    "@event-booking/observability": "workspace:*",
     "@prisma/client": "^6.16.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "pino-http": "^11.0.0",
+    "prisma": "^6.16.0",
     "uuid": "^11.1.0",
     "zod": "^4.1.8"
   },
@@ -29,7 +36,6 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.1",
     "@types/supertest": "^6.0.3",
-    "prisma": "^6.16.0",
     "supertest": "^7.1.4",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",

@@ -27,7 +27,9 @@ describe("Kafka contract schemas", () => {
   });
 
   it("rejects invalid envelope UUIDs", () => {
-    expect(() => parseMessageEnvelope(Topics.RESERVE_SEATS, { ...reserveSeatsMessage(), messageId: "invalid" })).toThrow();
+    expect(() =>
+      parseMessageEnvelope(Topics.RESERVE_SEATS, { ...reserveSeatsMessage(), messageId: "invalid" })
+    ).toThrow();
   });
 
   it("rejects invalid topic payloads", () => {

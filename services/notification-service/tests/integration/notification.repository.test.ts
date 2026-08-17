@@ -15,16 +15,32 @@ describe("PrismaNotificationRepository", () => {
   beforeAll(async () => {
     context.containerName = `notification-db-test-${randomUUID().slice(0, 8)}`;
     execFileSync("docker", [
-      "run", "-d", "--rm", "--name", context.containerName,
-      "-e", "POSTGRES_PASSWORD=postgres", "-e", "POSTGRES_DB=event_booking",
-      "-p", "127.0.0.1::5432", "postgres:16-alpine"
+      "run",
+      "-d",
+      "--rm",
+      "--name",
+      context.containerName,
+      "-e",
+      "POSTGRES_PASSWORD=postgres",
+      "-e",
+      "POSTGRES_DB=event_booking",
+      "-p",
+      "127.0.0.1::5432",
+      "postgres:16-alpine"
     ]);
 
     for (let attempt = 0; attempt < 60; attempt += 1) {
-      if (spawnSync("docker", ["exec", context.containerName, "pg_isready", "-U", "postgres", "-d", "event_booking"]).status === 0) break;
+      if (
+        spawnSync("docker", ["exec", context.containerName, "pg_isready", "-U", "postgres", "-d", "event_booking"])
+          .status === 0
+      )
+        break;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    const port = execFileSync("docker", ["port", context.containerName, "5432/tcp"], { encoding: "utf8" }).trim().split(":").pop();
+    const port = execFileSync("docker", ["port", context.containerName, "5432/tcp"], { encoding: "utf8" })
+      .trim()
+      .split(":")
+      .pop();
     context.databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/event_booking`;
     execFileSync("corepack", ["pnpm", "prisma:migrate:deploy"], {
       stdio: "inherit",
