@@ -1,0 +1,10 @@
+**/dist
+**/generated
+**/node_modules
+**/prisma/migrations
+infrastructure/legacy-kustomize
+infrastructure/helm/event-booking/templates
+pnpm-lock.yaml
+docs/Event_Booking_System.postman_collection.json
+README.md
+docs
